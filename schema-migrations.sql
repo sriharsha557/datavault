@@ -135,3 +135,103 @@ vacuum analyze query_logs;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS content TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_documents_updated_at ON documents(updated_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration: Switch embeddings from 384-dim (all-MiniLM) to 768-dim (nomic-embed-text-v1_5)
+-- Run this BEFORE re-ingesting documents with the updated ingest script.
+-- WARNING: This deletes all existing chunks — re-ingest all documents after running.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- 1. Drop existing vector index (required before altering column type)
+drop index if exists chunks_embedding_idx;
+
+-- 2. Clear all chunks (embeddings are incompatible between models)
+truncate table chunks cascade;
+
+-- 3. Alter embedding column to 768 dimensions
+alter table chunks alter column embedding type vector(768);
+
+-- 4. Recreate IVFFlat index for 768-dim cosine similarity
+create index chunks_embedding_idx on chunks using ivfflat (embedding vector_cosine_ops)
+  with (lists = 100);
+
+-- 5. Update match_chunks function signature to 768-dim
+create or replace function match_chunks(
+  query_embedding vector(768),
+  match_count     int default 5,
+  filter_doc_type text default null
+)
+returns table (
+  id          uuid,
+  content     text,
+  doc_type    text,
+  metadata    jsonb,
+  filename    text,
+  similarity  float
+)
+language plpgsql
+as $$
+begin
+  return query
+  select
+    c.id,
+    c.content,
+    c.doc_type,
+    c.metadata,
+    d.filename,
+    1 - (c.embedding <=> query_embedding) as similarity
+  from chunks c
+  join documents d on d.id = c.document_id
+  where (filter_doc_type is null or c.doc_type = filter_doc_type)
+  order by c.embedding <=> query_embedding
+  limit match_count;
+end;
+$$;
+
+-- 6. Update hybrid_search_chunks function signature to 768-dim
+create or replace function hybrid_search_chunks(
+  query_embedding vector(768),
+  query_text      text,
+  match_count     int default 12,
+  filter_doc_type text default null
+)
+returns table (
+  id           uuid,
+  content      text,
+  doc_type     text,
+  metadata     jsonb,
+  filename     text,
+  similarity   float,
+  keyword_rank float
+)
+language plpgsql
+as $$
+begin
+  return query
+  with vector_results as (
+    select c.id, c.content, c.doc_type, c.metadata, d.filename,
+           1 - (c.embedding <=> query_embedding) as similarity, 0.0 as keyword_rank
+    from chunks c join documents d on d.id = c.document_id
+    where (filter_doc_type is null or c.doc_type = filter_doc_type)
+    order by c.embedding <=> query_embedding
+    limit match_count
+  ),
+  keyword_results as (
+    select c.id, c.content, c.doc_type, c.metadata, d.filename,
+           0.0 as similarity,
+           ts_rank(c.content_tsvector, plainto_tsquery('english', query_text)) as keyword_rank
+    from chunks c join documents d on d.id = c.document_id
+    where (filter_doc_type is null or c.doc_type = filter_doc_type)
+      and c.content_tsvector @@ plainto_tsquery('english', query_text)
+    order by keyword_rank desc
+    limit match_count / 2
+  ),
+  combined as (select * from vector_results union select * from keyword_results)
+  select c.id, c.content, c.doc_type, c.metadata, c.filename,
+         max(c.similarity) as similarity, max(c.keyword_rank) as keyword_rank
+  from combined c
+  group by c.id, c.content, c.doc_type, c.metadata, c.filename
+  order by (max(c.similarity) * 0.7 + max(c.keyword_rank) * 0.3) desc
+  limit match_count;
+end;
+$$;

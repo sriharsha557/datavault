@@ -9,6 +9,7 @@
   --dv-sidebar-hover: #252932;
   --dv-border: #e5e7eb;
   --dv-text: #1f2937;
+  --dv-muted: #6b7280;
   --dv-text-light: #6b7280;
   --dv-text-sidebar: #e5e7eb;
   --dv-text-sidebar-muted: #9ca3af;
@@ -17,6 +18,51 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+
+  /* Doc-type color tokens */
+  --hub:              #3b82f6;
+  --hub-bg:           #eff6ff;
+  --hub-border:       #bfdbfe;
+  --link:             #8b5cf6;
+  --link-bg:          #f5f3ff;
+  --link-border:      #ddd6fe;
+  --satellite:        #10b981;
+  --satellite-bg:     #ecfdf5;
+  --satellite-border: #a7f3d0;
+  --pit_bridge:       #f59e0b;
+  --pit_bridge-bg:    #fffbeb;
+  --pit_bridge-border:#fde68a;
+  --methodology:      #6366f1;
+  --methodology-bg:   #eef2ff;
+  --methodology-border:#c7d2fe;
+  --general:          #6b7280;
+  --general-bg:       #f9fafb;
+  --general-border:   #e5e7eb;
+}
+
+/* Dark mode overrides */
+.dark {
+  --dv-bg:      #0f1117;
+  --dv-surface: #1a1d24;
+  --dv-border:  #2d3139;
+  --dv-text:    #e5e7eb;
+  --dv-muted:   #6b7280;
+  --dv-accent:  #60a5fa;
+  --dv-accent-light: #93c5fd;
+
+  /* Doc-type dark overrides */
+  --hub-bg:           #1e3a5f;
+  --hub-border:       #2563eb;
+  --link-bg:          #2e1f5e;
+  --link-border:      #7c3aed;
+  --satellite-bg:     #064e3b;
+  --satellite-border: #059669;
+  --pit_bridge-bg:    #451a03;
+  --pit_bridge-border:#d97706;
+  --methodology-bg:   #1e1b4b;
+  --methodology-border:#4f46e5;
+  --general-bg:       #1f2937;
+  --general-border:   #374151;
 }
 
 body { 
@@ -39,15 +85,43 @@ body {
   overflow: hidden;
 }
 
-/* Markdown prose overrides for light theme */
+/* Markdown prose overrides */
 .prose h1, .prose h2, .prose h3 { color: var(--dv-text); margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
 .prose p { color: var(--dv-text); margin-bottom: 0.75rem; }
 .prose ul, .prose ol { color: var(--dv-text); padding-left: 1.25rem; }
 .prose li { margin-bottom: 0.25rem; }
-.prose strong { color: #111827; font-weight: 600; }
-.prose code { background: #f3f4f6; color: #dc2626; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.85em; border: 1px solid #e5e7eb; }
-.prose pre { background: #f9fafb; border: 1px solid var(--dv-border); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+.prose strong { color: var(--dv-text); font-weight: 600; }
+.prose code { background: var(--dv-border); color: #dc2626; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.85em; border: 1px solid var(--dv-border); }
+.prose pre { background: var(--dv-surface); border: 1px solid var(--dv-border); border-radius: 8px; padding: 1rem; overflow-x: auto; }
 .prose pre code { background: transparent; padding: 0; color: var(--dv-text); border: none; }
 .prose table { font-size: 0.85em; }
 .prose th, .prose td { border-color: var(--dv-border); padding: 0.5rem; }
 .prose th { background: var(--dv-surface); color: var(--dv-text); font-weight: 600; }
+
+/* Doc-type source badge pills */
+.src-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  border-width: 1px;
+  border-style: solid;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.src-badge-hub        { color: var(--hub);        background: var(--hub-bg);        border-color: var(--hub-border); }
+.src-badge-link       { color: var(--link);       background: var(--link-bg);       border-color: var(--link-border); }
+.src-badge-satellite  { color: var(--satellite);  background: var(--satellite-bg);  border-color: var(--satellite-border); }
+.src-badge-pit_bridge { color: var(--pit_bridge); background: var(--pit_bridge-bg); border-color: var(--pit_bridge-border); }
+.src-badge-methodology{ color: var(--methodology);background: var(--methodology-bg);border-color: var(--methodology-border); }
+.src-badge-general    { color: var(--general);    background: var(--general-bg);    border-color: var(--general-border); }
+
+/* Indeterminate progress bar animation */
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); width: 40%; }
+  50%  { width: 60%; }
+  100% { transform: translateX(300%); width: 40%; }
+}

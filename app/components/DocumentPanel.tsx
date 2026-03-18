@@ -128,9 +128,9 @@ export default function DocumentPanel({ documents, onDocumentsChange }: Props) {
                     </div>
                     <StatusBadge status={u.status} />
                   </div>
-                  {u.status === 'uploading' && u.progress !== undefined && (
-                    <div className="w-full bg-dv-border rounded-full h-1.5 mb-1">
-                      <div className="bg-dv-accent h-1.5 rounded-full transition-all duration-300" style={{ width: `${u.progress}%` }}></div>
+                  {u.status === 'uploading' && (
+                    <div className="w-full bg-dv-border rounded-full h-1.5 mb-1 overflow-hidden">
+                      <div className="bg-dv-accent h-1.5 rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]" style={{ width: '40%' }}></div>
                     </div>
                   )}
                   {u.status === 'pending' && (

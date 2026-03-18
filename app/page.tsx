@@ -1,10 +1,13 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import ChatWindow from './components/ChatWindow';
+import ThemeToggle from './components/ThemeToggle';
+import { useTheme } from './components/ThemeProvider';
 import type { Document } from '@/types';
 
 export default function Home() {
   const [documents, setDocuments] = useState<Document[]>([]);
+  const { theme } = useTheme();
 
   const fetchDocuments = useCallback(async () => {
     try {
@@ -23,9 +26,9 @@ export default function Home() {
   return (
     <div className="flex flex-col h-screen bg-dv-bg overflow-hidden">
       {/* Topbar */}
-      <header className="flex items-center justify-between px-6 py-3 border-b border-dv-border bg-dv-surface flex-shrink-0">
+      <header className="flex items-center justify-between px-6 py-2 border-b border-dv-border bg-dv-surface flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 bg-dv-accent rounded-md flex items-center justify-center text-white text-xs font-bold">Q</div>
+          <img src={theme === 'dark' ? '/logo_black.png' : '/favicon/android-chrome-192x192.png'} alt="Quick Query" className="h-14 w-auto" />
           <div>
             <h1 className="text-sm font-bold text-dv-text tracking-tight">Quick Query</h1>
             <p className="text-[10px] text-dv-muted">Data Vault Knowledge Base</p>
@@ -40,6 +43,16 @@ export default function Home() {
             <span className="px-1.5 py-0.5 bg-dv-bg border border-dv-border rounded">LLaMA 3.1 8B</span>
             <span className="px-1.5 py-0.5 bg-dv-bg border border-dv-border rounded">pgvector</span>
           </div>
+          <ThemeToggle />
+          <a
+            href="/admin"
+            className="ml-1 flex items-center gap-1.5 text-xs px-3 py-1.5 border border-dv-border rounded-lg text-dv-muted hover:border-dv-accent hover:text-dv-accent transition-colors"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+            Admin
+          </a>
         </div>
       </header>
 

@@ -49,6 +49,7 @@ export interface ChatMessage {
   query?: string; // Store the original query for feedback
   hasError?: boolean;
   originalQuery?: string;
+  latencyMs?: number;
 }
 
 // API Request/Response types

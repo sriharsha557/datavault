@@ -37,6 +37,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
   const [historySuggestions, setHistorySuggestions] = useState(queryHistory.getRecentQueries());
   const [thresholdConfig, setThresholdConfig] = useState<SimilarityThresholdConfig>({ threshold: 0.5, enabled: false });
   const [filterBarOpen, setFilterBarOpen] = useState(false);
+  const streamStartRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const inputWrapperRef = useRef<HTMLDivElement>(null);
@@ -65,6 +66,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
     setLoading(true);
 
     const buffer = new StreamingBuffer();
+    streamStartRef.current = Date.now();
 
     const handleStreamError = () => {
       const partial = buffer.getPartialContent();
@@ -117,7 +119,8 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
               setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: buffer.getPartialContent() } : m));
             } else if (event.type === 'done') {
               buffer.clear();
-              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, isStreaming: false } : m));
+              const latencyMs = Date.now() - streamStartRef.current;
+              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, isStreaming: false, latencyMs } : m));
               queryHistory.addQuery(query);
               setHistorySuggestions(queryHistory.getRecentQueries());
             } else if (event.type === 'error') {
@@ -182,11 +185,21 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
           <span>Filters &amp; Settings</span>
           <span>{filterBarOpen ? '▲' : '▼'}</span>
         </button>
-        <div className={`flex items-center gap-3 px-5 py-2.5 flex-wrap ${filterBarOpen ? 'flex' : 'hidden md:flex'}`}>
+        <div className={`flex items-center gap-2 px-5 py-2.5 flex-wrap ${filterBarOpen ? 'flex' : 'hidden md:flex'}`}>
           <span className="text-xs text-dv-muted">Filter:</span>
-          <select value={docTypeFilter} onChange={(e) => setDocTypeFilter(e.target.value as DocType | '')} className="text-xs bg-transparent border border-dv-border rounded-md px-2 py-1 text-dv-text focus:outline-none focus:border-dv-accent min-h-[44px] md:min-h-0">
-            {DOC_TYPE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-          </select>
+          {DOC_TYPE_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              onClick={() => setDocTypeFilter(o.value as DocType | '')}
+              className={`text-xs px-3 py-1 rounded-full border transition-all ${
+                docTypeFilter === o.value
+                  ? 'bg-dv-accent text-white border-dv-accent'
+                  : 'border-dv-border text-dv-muted hover:border-dv-accent hover:text-dv-accent'
+              }`}
+            >
+              {o.label}
+            </button>
+          ))}
           <div className="ml-auto">
             <SimilarityThresholdSlider onChange={setThresholdConfig} />
           </div>
@@ -284,9 +297,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
               </>
             )}
             {!hasDocuments && (
-              <div className="bg-dv-surface border border-dv-border rounded-xl p-6">
-                <p className="text-sm text-dv-muted">Ask a question to get started.</p>
-              </div>
+              <NoDocs onAskAnyway={() => sendMessage(input || 'Tell me about Data Vault 2.0')} />
             )}
           </div>
         )}
@@ -309,7 +320,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
             <div className="flex-shrink-0">
               <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-white shadow-md bg-gray-200">
                 <img 
-                  src={msg.role === 'user' ? '/avatars/engineer.png' : '/avatars/assistant.png'} 
+                  src={msg.role === 'user' ? '/avatars/engineer.svg' : '/avatars/assistant.svg'} 
                   alt={msg.role === 'user' ? 'EDWH Engineer' : 'DV Assistant'}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -335,7 +346,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
 
               {/* Bubble content */}
               {msg.role === 'user' ? (
-                <div className="bg-white border border-gray-200 text-gray-800 px-4 py-3 rounded-3xl rounded-tr-md shadow-sm text-sm">
+                <div className="bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-800 dark:text-gray-100 px-4 py-3 rounded-3xl rounded-tr-md shadow-sm text-sm">
                   {msg.content}
                 </div>
               ) : (
@@ -350,6 +361,12 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
                     )}
                     {msg.isStreaming && msg.content && <span className="inline-block w-1.5 h-4 bg-white animate-pulse ml-0.5 rounded-sm" />}
                   </div>
+                  {/* Latency tag */}
+                  {!msg.isStreaming && msg.latencyMs && (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+                      ⚡ {(msg.latencyMs / 1000).toFixed(1)}s
+                    </span>
+                  )}
                   {msg.sources && msg.sources.length > 0 && <SourceList sources={msg.sources} />}
                   {!msg.isStreaming && msg.content && !msg.hasError && (
                     <MessageActions messageId={msg.id} content={msg.content} query={msg.query || ''} />
@@ -484,6 +501,10 @@ function MessageActions({ messageId, content, query }: { messageId: string; cont
   );
 }
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  hub: 'Hub', link: 'Link', satellite: 'Sat', pit_bridge: 'PIT/Bridge', methodology: 'Method', general: 'General',
+};
+
 function SourceList({ sources }: { sources: Source[] }) {
   const [open, setOpen] = useState(false);
   return (
@@ -495,15 +516,36 @@ function SourceList({ sources }: { sources: Source[] }) {
         <div className="mt-1.5 space-y-1.5">
           {sources.map((s, i) => (
             <div key={i} className="bg-dv-bg border border-dv-border rounded-lg px-3 py-2">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[11px] font-medium text-dv-text truncate">{s.filename}</span>
-                <span className="text-[10px] text-dv-muted ml-2 flex-shrink-0">{Math.round(s.similarity * 100)}% match</span>
+              <div className="flex items-center gap-2 mb-1">
+                {s.doc_type && (
+                  <span className={`src-badge src-badge-${s.doc_type}`}>
+                    {DOC_TYPE_LABELS[s.doc_type] ?? s.doc_type}
+                  </span>
+                )}
+                <span className="text-[11px] font-medium text-dv-text truncate flex-1">{s.filename}</span>
+                <span className="text-[10px] text-dv-muted flex-shrink-0">{Math.round(s.similarity * 100)}%</span>
               </div>
               <p className="text-[11px] text-dv-muted leading-relaxed">{s.excerpt}</p>
             </div>
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function NoDocs({ onAskAnyway }: { onAskAnyway: () => void }) {
+  return (
+    <div className="bg-dv-surface border border-dv-border rounded-xl p-6 max-w-sm mx-auto text-center space-y-3">
+      <div className="text-3xl">📂</div>
+      <p className="text-sm font-semibold text-dv-text">No documents indexed yet</p>
+      <p className="text-xs text-dv-muted">The knowledge base is being set up. You can still ask general Data Vault questions now.</p>
+      <button
+        onClick={onAskAnyway}
+        className="text-xs px-3 py-1.5 bg-dv-accent text-white rounded-lg hover:bg-dv-accent/90 transition-colors"
+      >
+        Ask anyway
+      </button>
     </div>
   );
 }
