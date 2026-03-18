@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --dv-bg: #f8f9fa;
+  --dv-surface: #ffffff;
+  --dv-sidebar: #1a1d24;
+  --dv-sidebar-hover: #252932;
+  --dv-border: #e5e7eb;
+  --dv-text: #1f2937;
+  --dv-text-light: #6b7280;
+  --dv-text-sidebar: #e5e7eb;
+  --dv-text-sidebar-muted: #9ca3af;
+  --dv-accent: #3b82f6;
+  --dv-accent-light: #60a5fa;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+}
+
+body { 
+  background: var(--dv-bg); 
+  color: var(--dv-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: var(--dv-surface); }
+::-webkit-scrollbar-thumb { background: var(--dv-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--dv-muted); }
+
+/* Line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Markdown prose overrides for light theme */
+.prose h1, .prose h2, .prose h3 { color: var(--dv-text); margin-top: 1rem; margin-bottom: 0.5rem; font-weight: 600; }
+.prose p { color: var(--dv-text); margin-bottom: 0.75rem; }
+.prose ul, .prose ol { color: var(--dv-text); padding-left: 1.25rem; }
+.prose li { margin-bottom: 0.25rem; }
+.prose strong { color: #111827; font-weight: 600; }
+.prose code { background: #f3f4f6; color: #dc2626; padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.85em; border: 1px solid #e5e7eb; }
+.prose pre { background: #f9fafb; border: 1px solid var(--dv-border); border-radius: 8px; padding: 1rem; overflow-x: auto; }
+.prose pre code { background: transparent; padding: 0; color: var(--dv-text); border: none; }
+.prose table { font-size: 0.85em; }
+.prose th, .prose td { border-color: var(--dv-border); padding: 0.5rem; }
+.prose th { background: var(--dv-surface); color: var(--dv-text); font-weight: 600; }
