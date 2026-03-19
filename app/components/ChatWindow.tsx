@@ -659,25 +659,49 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 
 function SourceList({ sources }: { sources: Source[] }) {
   const [open, setOpen] = useState(false);
+
+  // Group by filename
+  const grouped = sources.reduce<Record<string, { doc_type?: string; bestSimilarity: number; excerpts: string[] }>>(
+    (acc, s) => {
+      if (!acc[s.filename]) {
+        acc[s.filename] = { doc_type: s.doc_type, bestSimilarity: s.similarity, excerpts: [] };
+      } else {
+        acc[s.filename].bestSimilarity = Math.max(acc[s.filename].bestSimilarity, s.similarity);
+      }
+      acc[s.filename].excerpts.push(s.excerpt);
+      return acc;
+    },
+    {}
+  );
+
+  const files = Object.entries(grouped);
+  const singleFile = files.length === 1;
+
   return (
     <div>
       <button onClick={() => setOpen(!open)} className="text-[11px] text-dv-muted hover:text-dv-accent transition-colors flex items-center gap-1">
-        <span>{open ? '▼' : '▶'}</span> {sources.length} source{sources.length !== 1 ? 's' : ''}
+        <span>{open ? '▼' : '▶'}</span>
+        {singleFile
+          ? `1 source · ${files[0][0]}`
+          : `${files.length} source${files.length !== 1 ? 's' : ''}`}
       </button>
       {open && (
         <div className="mt-1.5 space-y-1.5">
-          {sources.map((s, i) => (
-            <div key={i} className="bg-dv-bg border border-dv-border rounded-lg px-3 py-2">
+          {files.map(([filename, info]) => (
+            <div key={filename} className="bg-dv-bg border border-dv-border rounded-lg px-3 py-2">
               <div className="flex items-center gap-2 mb-1">
-                {s.doc_type && (
-                  <span className={`src-badge src-badge-${s.doc_type}`}>
-                    {DOC_TYPE_LABELS[s.doc_type] ?? s.doc_type}
+                {info.doc_type && (
+                  <span className={`src-badge src-badge-${info.doc_type}`}>
+                    {DOC_TYPE_LABELS[info.doc_type] ?? info.doc_type}
                   </span>
                 )}
-                <span className="text-[11px] font-medium text-dv-text truncate flex-1">{s.filename}</span>
-                <span className="text-[10px] text-dv-muted flex-shrink-0">{Math.round(s.similarity * 100)}%</span>
+                <span className="text-[11px] font-medium text-dv-text truncate flex-1">{filename}</span>
+                <span className="text-[10px] text-dv-muted flex-shrink-0">{Math.round(info.bestSimilarity * 100)}%</span>
               </div>
-              <p className="text-[11px] text-dv-muted leading-relaxed">{s.excerpt}</p>
+              {/* Only show excerpt if multiple files — single file just shows the name */}
+              {!singleFile && (
+                <p className="text-[11px] text-dv-muted leading-relaxed">{info.excerpts[0]}</p>
+              )}
             </div>
           ))}
         </div>
