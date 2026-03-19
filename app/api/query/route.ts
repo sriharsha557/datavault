@@ -101,13 +101,21 @@ export async function POST(req: NextRequest) {
           .sort((a, b) => b.rerank_score - a.rerank_score)
           .slice(0, 8); // Keep top 8 after re-ranking
 
-        // 3. Send sources to client
-        const sources = rankedChunks.map((c) => ({
-          filename: c.filename,
-          doc_type: c.doc_type,
-          similarity: c.similarity,
-          excerpt: c.content.slice(0, 150) + (c.content.length > 150 ? '...' : ''),
-        }));
+        // 3. Send sources to client — deduplicate by content fingerprint
+        const seenExcerpts = new Set<string>();
+        const sources = rankedChunks
+          .filter((c) => {
+            const key = c.content.slice(0, 80).toLowerCase().replace(/\s+/g, ' ');
+            if (seenExcerpts.has(key)) return false;
+            seenExcerpts.add(key);
+            return true;
+          })
+          .map((c) => ({
+            filename: c.filename,
+            doc_type: c.doc_type,
+            similarity: c.similarity,
+            excerpt: c.content.slice(0, 150) + (c.content.length > 150 ? '...' : ''),
+          }));
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`));
 
         // 4. Build prompt and stream LLM response

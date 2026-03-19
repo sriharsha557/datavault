@@ -1,6 +1,18 @@
 import type { DocType } from '@/types';
 import { getPageNumber } from './extractor';
 
+/**
+ * Scrub PII (emails, phone numbers) from text before chunking.
+ * Replaces with neutral placeholders so they don't appear in search results.
+ */
+function scrubPII(text: string): string {
+  return text
+    // Email addresses
+    .replace(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, '[email]')
+    // Phone numbers (various formats)
+    .replace(/(\+?\d[\d\s\-().]{7,}\d)/g, '[phone]');
+}
+
 export interface TextChunk {
   content: string;
   chunk_index: number;
@@ -33,7 +45,7 @@ export function splitIntoChunks(
   metadata: Record<string, unknown> = {},
   options: ChunkingOptions = {}
 ): TextChunk[] {
-  const trimmedText = text.trim();
+  const trimmedText = scrubPII(text.trim());
   const chunks: TextChunk[] = [];
   
   let startOffset = 0;
