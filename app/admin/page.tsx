@@ -124,6 +124,15 @@ export default function AdminPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <a
+            href="/"
+            className="text-xs text-dv-muted hover:text-dv-accent transition-colors px-2 py-1 border border-dv-border rounded flex items-center gap-1"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Main page
+          </a>
           <span className="text-xs text-dv-muted">{readyDocs.length} document{readyDocs.length !== 1 ? 's' : ''} indexed</span>
           <button
             onClick={() => setAuthed(false)}

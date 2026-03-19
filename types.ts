@@ -50,6 +50,7 @@ export interface ChatMessage {
   hasError?: boolean;
   originalQuery?: string;
   latencyMs?: number;
+  answerSource?: 'documents' | 'llm';
 }
 
 // API Request/Response types

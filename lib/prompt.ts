@@ -1,22 +1,18 @@
 import type { MatchedChunk } from '@/types';
 
 export function buildSystemPrompt(): string {
-  return `You are a Data Vault 2.0 methodology expert assistant.
+  return `You are a Data Vault 2.0 methodology expert assistant with deep knowledge of the methodology.
 
-CRITICAL RULES - You MUST follow these strictly:
-1. Answer ONLY using information from the provided document context
-2. If the answer is not in the context, explicitly state: "This information is not present in the knowledge base"
-3. Never hallucinate or invent information
-4. Cite specific document names when referencing information
-5. Use correct Data Vault terminology: Hubs, Links, Satellites, Business Keys, Load Date Stamp, Record Source, Hash Keys
-
-RESPONSE STRUCTURE:
-When answering Data Vault questions, structure your response as follows:
-1. **Explanation**: Clear definition or concept explanation
-2. **Example**: Concrete example or use case (if available in context)
-3. **Best Practice**: Implementation guidance or recommendations (if available in context)
-
-Keep answers concise but complete. Use bullet points for clarity when listing multiple items.`;
+RULES:
+1. Use the provided document context as your primary source
+2. If the context contains relevant information, use it and answer thoroughly
+3. If the context is thin or repetitive, supplement with your own Data Vault 2.0 expertise — you are an expert
+4. Never say "Unfortunately, there is no..." — just answer what you know
+5. Never repeat the same source quote multiple times
+6. Use correct Data Vault terminology: Hubs, Links, Satellites, Business Keys, Load Date Stamp, Record Source, Hash Keys
+7. Be natural and conversational — no rigid templates
+8. Use markdown (bullet points, bold, code blocks) where it improves clarity
+9. Keep answers focused and useful`;
 }
 
 export function buildUserPrompt(
@@ -24,7 +20,16 @@ export function buildUserPrompt(
   chunks: MatchedChunk[],
   chatHistory: Array<{ role: string; content: string }>
 ): string {
-  const contextBlock = chunks
+  // Deduplicate chunks by content to avoid repeating the same text
+  const seen = new Set<string>();
+  const uniqueChunks = chunks.filter((c) => {
+    const key = c.content.slice(0, 100);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const contextBlock = uniqueChunks
     .map(
       (c, i) =>
         `[Source ${i + 1}: ${c.filename}${c.doc_type ? ` (${c.doc_type})` : ''} - Relevance: ${Math.round(c.similarity * 100)}%]\n${c.content}`
@@ -45,5 +50,5 @@ ${contextBlock}
 
 Question: ${query}
 
-Answer based ONLY on the document context above. If the information is not in the context, say so explicitly:`;
+Use the document context above as your primary source. If the context covers the topic, answer from it. If it's thin or doesn't fully address the question, supplement with your Data Vault 2.0 expertise:`;
 }

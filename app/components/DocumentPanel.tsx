@@ -79,7 +79,21 @@ export default function DocumentPanel({ documents, onDocumentsChange }: Props) {
     maxSize: 10 * 1024 * 1024,
   });
 
-  // Manual upload for queued items (doc type was changed after drop)
+  // Cancel an uploading item
+  const cancelUpload = (idx: number) => {
+    setUploads((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  // Clean up stuck 'processing' documents
+  const cleanupStuck = async () => {
+    const stuckDocs = documents.filter((d) => d.status === 'processing');
+    await Promise.all(
+      stuckDocs.map((d) =>
+        fetch('/api/documents', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: d.id }) })
+      )
+    );
+    onDocumentsChange();
+  };
   const processUpload = async (idx: number) => {
     const upload = uploads[idx];
     if (upload.status !== 'pending') return;
@@ -133,6 +147,14 @@ export default function DocumentPanel({ documents, onDocumentsChange }: Props) {
                       <div className="bg-dv-accent h-1.5 rounded-full animate-[indeterminate_1.5s_ease-in-out_infinite]" style={{ width: '40%' }}></div>
                     </div>
                   )}
+                  {(u.status === 'pending' || u.status === 'uploading') && (
+                    <button
+                      onClick={() => cancelUpload(i)}
+                      className="text-[10px] text-dv-muted hover:text-red-500 transition-colors mt-1"
+                    >
+                      ✕ Cancel
+                    </button>
+                  )}
                   {u.status === 'pending' && (
                     <div className="flex items-center gap-2 mt-1">
                       <select value={u.docType} onChange={(e) => setUploads(prev => prev.map((x, j) => j === i ? { ...x, docType: e.target.value as DocType } : x))} className="flex-1 text-xs bg-dv-bg border border-dv-border rounded px-1 py-0.5 text-dv-text">
@@ -154,7 +176,18 @@ export default function DocumentPanel({ documents, onDocumentsChange }: Props) {
           {/* Document list */}
           {documents.length > 0 && (
             <div className="space-y-1">
-              <p className="text-xs text-dv-muted font-medium uppercase tracking-wider pt-1">Indexed documents</p>
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-xs text-dv-muted font-medium uppercase tracking-wider">Indexed documents</p>
+                {documents.some((d) => d.status === 'processing') && (
+                  <button
+                    onClick={cleanupStuck}
+                    className="text-[10px] text-amber-500 hover:text-red-500 transition-colors border border-amber-200 rounded px-1.5 py-0.5"
+                    title="Remove stuck processing documents"
+                  >
+                    Clean up stuck
+                  </button>
+                )}
+              </div>
               {documents.map((doc) => (
                 <div key={doc.id} className="flex items-center gap-2 py-1.5 group">
                   <div className="flex-1 min-w-0">

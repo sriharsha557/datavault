@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ChatMessage, DocType, Source } from '@/types';
@@ -37,6 +37,8 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
   const [historySuggestions, setHistorySuggestions] = useState(queryHistory.getRecentQueries());
   const [thresholdConfig, setThresholdConfig] = useState<SimilarityThresholdConfig>({ threshold: 0.5, enabled: false });
   const [filterBarOpen, setFilterBarOpen] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const filterPopoverRef = useRef<HTMLDivElement>(null);
   const streamStartRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -45,6 +47,17 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Close filter popover on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (filterPopoverRef.current && !filterPopoverRef.current.contains(e.target as Node)) {
+        setFilterBarOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   const sendMessage = async (query: string) => {
     if (!query.trim() || loading) return;
@@ -118,12 +131,25 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
               buffer.startTimeoutWatcher(30000, handleStreamError);
               setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: buffer.getPartialContent() } : m));
             } else if (event.type === 'done') {
+              const finalContent = buffer.getPartialContent();
               buffer.clear();
               const latencyMs = Date.now() - streamStartRef.current;
-              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, isStreaming: false, latencyMs } : m));
+              setMessages((prev) => prev.map((m) => m.id === assistantId ? { ...m, content: finalContent, isStreaming: false, latencyMs, answerSource: event.answerSource } : m));
               queryHistory.addQuery(query);
               setHistorySuggestions(queryHistory.getRecentQueries());
+              setLoading(false);
+              return;
             } else if (event.type === 'error') {
+              // Check if it's a threshold "no results" error — show friendly card
+              if (event.error?.includes('similarity threshold')) {
+                setMessages((prev) => prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: '__no_results__', isStreaming: false }
+                    : m
+                ));
+                setLoading(false);
+                return;
+              }
               handleStreamError();
               return;
             }
@@ -161,7 +187,46 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
           <h2 className={`font-semibold text-dv-text transition-all duration-300 ${hasConversation ? 'text-xl mb-1' : 'text-3xl mb-2'}`}>
             Hello, EDWH Engineer! 👋
           </h2>
-          <ExportButton messages={messages} />
+          <div className="flex items-center gap-2">
+            {hasConversation && (
+              <>
+                <button
+                  onClick={() => setShowClearConfirm(true)}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-dv-border rounded-lg text-dv-muted hover:border-dv-accent hover:text-dv-accent transition-colors"
+                  title="Back to home screen"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+                  </svg>
+                  Home
+                </button>
+                {/* Confirmation dialog */}
+                {showClearConfirm && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                    <div className="bg-dv-surface border border-dv-border rounded-xl shadow-xl p-5 max-w-xs w-full mx-4 space-y-3">
+                      <p className="text-sm font-semibold text-dv-text">Clear conversation?</p>
+                      <p className="text-xs text-dv-muted">This will remove all messages and return to the home screen. This can't be undone.</p>
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => { setMessages([]); setShowClearConfirm(false); }}
+                          className="flex-1 text-xs px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                        >
+                          Clear
+                        </button>
+                        <button
+                          onClick={() => setShowClearConfirm(false)}
+                          className="flex-1 text-xs px-3 py-1.5 border border-dv-border text-dv-muted rounded-lg hover:border-dv-accent hover:text-dv-accent transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+            <ExportButton messages={messages} />
+          </div>
           </div>
           <p className={`text-dv-muted transition-all duration-300 ${hasConversation ? 'text-xs' : 'text-sm mb-2'}`}>
             I am your Data Vault Knowledge Assistant!
@@ -174,35 +239,54 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
         </div>
       </div>
 
-      {/* Filter bar */}
-      <div className="border-b border-dv-border bg-dv-surface/30">
-        {/* Mobile toggle */}
-        <button
-          className="md:hidden w-full flex items-center justify-between px-5 py-2 text-xs text-dv-muted"
-          onClick={() => setFilterBarOpen((v) => !v)}
-          aria-expanded={filterBarOpen}
-        >
-          <span>Filters &amp; Settings</span>
-          <span>{filterBarOpen ? '▲' : '▼'}</span>
-        </button>
-        <div className={`flex items-center gap-2 px-5 py-2.5 flex-wrap ${filterBarOpen ? 'flex' : 'hidden md:flex'}`}>
-          <span className="text-xs text-dv-muted">Filter:</span>
-          {DOC_TYPE_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              onClick={() => setDocTypeFilter(o.value as DocType | '')}
-              className={`text-xs px-3 py-1 rounded-full border transition-all ${
-                docTypeFilter === o.value
-                  ? 'bg-dv-accent text-white border-dv-accent'
-                  : 'border-dv-border text-dv-muted hover:border-dv-accent hover:text-dv-accent'
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-          <div className="ml-auto">
-            <SimilarityThresholdSlider onChange={setThresholdConfig} />
-          </div>
+      {/* Filter bar — compact popover */}
+      <div className="border-b border-dv-border bg-dv-surface/30 px-5 py-2 flex items-center gap-3">
+        <div className="relative" ref={filterPopoverRef}>
+          <button
+            onClick={() => setFilterBarOpen((v) => !v)}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 border rounded-lg transition-all ${
+              docTypeFilter
+                ? 'border-dv-accent text-dv-accent bg-dv-accent/5'
+                : 'border-dv-border text-dv-muted hover:border-dv-accent hover:text-dv-accent'
+            }`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            {docTypeFilter ? DOC_TYPE_OPTIONS.find(o => o.value === docTypeFilter)?.label : 'Filter'}
+            {docTypeFilter && (
+              <span
+                onClick={(e) => { e.stopPropagation(); setDocTypeFilter(''); }}
+                className="ml-0.5 text-dv-accent hover:text-red-500 transition-colors cursor-pointer"
+              >×</span>
+            )}
+          </button>
+          {filterBarOpen && (
+            <div className="absolute top-full left-0 mt-1.5 z-30 bg-dv-surface border border-dv-border rounded-xl shadow-lg p-3 min-w-[200px] space-y-1">
+              {DOC_TYPE_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  onClick={() => { setDocTypeFilter(o.value as DocType | ''); setFilterBarOpen(false); }}
+                  className={`w-full text-left text-xs px-3 py-1.5 rounded-lg transition-all ${
+                    docTypeFilter === o.value
+                      ? 'bg-dv-accent text-white'
+                      : 'text-dv-muted hover:bg-dv-bg hover:text-dv-text'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {/* Active filter pill mid-conversation */}
+        {hasConversation && docTypeFilter && (
+          <span className="text-[10px] text-dv-muted">
+            Filtering: <span className="font-medium text-dv-accent">{DOC_TYPE_OPTIONS.find(o => o.value === docTypeFilter)?.label}</span>
+          </span>
+        )}
+        <div className="ml-auto">
+          <SimilarityThresholdSlider onChange={setThresholdConfig} />
         </div>
       </div>
 
@@ -351,46 +435,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
                 </div>
               ) : (
                 <div className="space-y-2 w-full">
-                  <div className="bg-gray-800 text-white px-4 py-3 rounded-3xl rounded-tl-md shadow-md">
-                    {msg.content ? (
-                      <div className="prose prose-sm prose-invert max-w-none [&>*]:text-white [&_p]:text-white [&_li]:text-white [&_strong]:text-white">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <span className="text-gray-300 text-sm animate-pulse">Thinking...</span>
-                    )}
-                    {msg.isStreaming && msg.content && <span className="inline-block w-1.5 h-4 bg-white animate-pulse ml-0.5 rounded-sm" />}
-                  </div>
-                  {/* Latency tag */}
-                  {!msg.isStreaming && msg.latencyMs && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
-                      ⚡ {(msg.latencyMs / 1000).toFixed(1)}s
-                    </span>
-                  )}
-                  {msg.sources && msg.sources.length > 0 && <SourceList sources={msg.sources} />}
-                  {!msg.isStreaming && msg.content && !msg.hasError && (
-                    <MessageActions messageId={msg.id} content={msg.content} query={msg.query || ''} />
-                  )}
-                  {msg.hasError && (
-                    <StreamingErrorBanner
-                      partialContent={msg.content}
-                      onRetry={() => {
-                        // Remove the errored message and re-send
-                        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-                        sendMessage(msg.originalQuery || msg.query || '');
-                      }}
-                      onKeep={() => {
-                        setMessages((prev) => prev.map((m) =>
-                          m.id === msg.id ? { ...m, hasError: false } : m
-                        ));
-                      }}
-                      onEditRetry={() => {
-                        setMessages((prev) => prev.filter((m) => m.id !== msg.id));
-                        setInput(msg.originalQuery || msg.query || '');
-                        inputRef.current?.focus();
-                      }}
-                    />
-                  )}
+                  <AssistantBubble msg={msg} onRetry={(q) => { setMessages((prev) => prev.filter((m) => m.id !== msg.id)); sendMessage(q); }} onKeep={() => setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, hasError: false } : m))} onEditRetry={(q) => { setMessages((prev) => prev.filter((m) => m.id !== msg.id)); setInput(q); inputRef.current?.focus(); }} />
                 </div>
               )}
             </div>
@@ -440,6 +485,104 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
   );
 }
 
+function AssistantBubble({ msg, onRetry, onKeep, onEditRetry }: {
+  msg: ChatMessage;
+  onRetry: (q: string) => void;
+  onKeep: () => void;
+  onEditRetry: (q: string) => void;
+}) {
+  const COLLAPSE_THRESHOLD = 600; // chars
+  const [collapsed, setCollapsed] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  // Auto-collapse long responses once streaming is done
+  useEffect(() => {
+    if (!msg.isStreaming && msg.content.length > COLLAPSE_THRESHOLD) {
+      setCollapsed(true);
+    }
+  }, [msg.isStreaming, msg.content.length]);
+
+  const displayContent = collapsed
+    ? msg.content.slice(0, COLLAPSE_THRESHOLD) + '…'
+    : msg.content;
+
+  return (
+    <div
+      className="space-y-2 w-full"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="bg-gray-800 text-white px-4 py-3 rounded-3xl rounded-tl-md shadow-md">
+        {msg.content === '__no_results__' ? (
+          <div className="flex flex-col items-center gap-2 py-2 text-center">
+            <span className="text-2xl">🔍</span>
+            <p className="text-sm font-semibold text-white">No matching results</p>
+            <p className="text-xs text-gray-300">Nothing met the similarity threshold. Try lowering it or rephrasing your question.</p>
+          </div>
+        ) : msg.content ? (
+          <div className="prose prose-sm prose-invert max-w-none [&>*]:text-white [&_p]:text-white [&_li]:text-white [&_strong]:text-white">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
+          </div>
+        ) : (
+          /* Skeleton loader while waiting for first token */
+          <div className="space-y-2 py-1">
+            <div className="h-3 bg-gray-600 rounded animate-pulse w-3/4" />
+            <div className="h-3 bg-gray-600 rounded animate-pulse w-full" />
+            <div className="h-3 bg-gray-600 rounded animate-pulse w-5/6" />
+          </div>
+        )}
+        {msg.isStreaming && msg.content && <span className="inline-block w-1.5 h-4 bg-white animate-pulse ml-0.5 rounded-sm" />}
+      </div>
+
+      {/* Collapse / expand toggle */}
+      {!msg.isStreaming && msg.content !== '__no_results__' && msg.content.length > COLLAPSE_THRESHOLD && (
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          className="text-[10px] text-dv-muted hover:text-dv-accent transition-colors flex items-center gap-1"
+        >
+          {collapsed ? '▼ Show full answer' : '▲ Collapse'}
+        </button>
+      )}
+
+      {/* Meta badges row */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {!msg.isStreaming && msg.latencyMs && (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">
+            ⚡ {(msg.latencyMs / 1000).toFixed(1)}s
+          </span>
+        )}
+        {!msg.isStreaming && msg.answerSource && (
+          <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+            msg.answerSource === 'documents'
+              ? 'bg-blue-50 text-blue-600 border-blue-200'
+              : 'bg-gray-100 text-gray-500 border-gray-200'
+          }`}>
+            {msg.answerSource === 'documents' ? '📄 From your documents' : '🤖 LLM knowledge'}
+          </span>
+        )}
+      </div>
+
+      {msg.sources && msg.sources.length > 0 && <SourceList sources={msg.sources} />}
+
+      {/* Hover-only actions */}
+      {!msg.isStreaming && msg.content && msg.content !== '__no_results__' && !msg.hasError && (
+        <div className={`transition-opacity duration-150 ${hovered ? 'opacity-100' : 'opacity-0'}`}>
+          <MessageActions messageId={msg.id} content={msg.content} query={msg.query || ''} />
+        </div>
+      )}
+
+      {msg.hasError && (
+        <StreamingErrorBanner
+          partialContent={msg.content}
+          onRetry={() => onRetry(msg.originalQuery || msg.query || '')}
+          onKeep={onKeep}
+          onEditRetry={() => onEditRetry(msg.originalQuery || msg.query || '')}
+        />
+      )}
+    </div>
+  );
+}
+
 function MessageActions({ messageId, content, query }: { messageId: string; content: string; query: string }) {
   const [feedback, setFeedback] = useState<'helpful' | 'not_helpful' | null>(null);
   const [copied, setCopied] = useState(false);
@@ -462,7 +605,16 @@ function MessageActions({ messageId, content, query }: { messageId: string; cont
   };
 
   const copyAnswer = async () => {
-    await navigator.clipboard.writeText(content);
+    // Strip markdown to plain text
+    const plain = content
+      .replace(/#{1,6}\s+/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, ''))
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^\s*[-*+]\s+/gm, '• ')
+      .trim();
+    await navigator.clipboard.writeText(plain);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

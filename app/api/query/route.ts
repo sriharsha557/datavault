@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
             const token = chunk.choices[0]?.delta?.content || '';
             if (token) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', token })}\n\n`));
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'llm' })}\n\n`));
           controller.close();
           return;
         }
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'documents' })}\n\n`));
         controller.close();
         
         // Log query for analytics
