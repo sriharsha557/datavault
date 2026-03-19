@@ -99,17 +99,21 @@ export async function POST(req: NextRequest) {
             return { ...chunk, rerank_score: score };
           })
           .sort((a, b) => b.rerank_score - a.rerank_score)
-          .slice(0, 8); // Keep top 8 after re-ranking
+          .slice(0, 5); // Keep top 5 after re-ranking — enough context, less noise
 
         // 3. Send sources to client — deduplicate by content fingerprint
+        // Use a middle slice to catch overlapping chunks that differ only at the edges
         const seenExcerpts = new Set<string>();
         const sources = rankedChunks
           .filter((c) => {
-            const key = c.content.slice(0, 80).toLowerCase().replace(/\s+/g, ' ');
+            // Fingerprint: 60 chars from the middle of the content
+            const mid = Math.floor(c.content.length / 2);
+            const key = c.content.slice(Math.max(0, mid - 30), mid + 30).toLowerCase().replace(/\s+/g, ' ').trim();
             if (seenExcerpts.has(key)) return false;
             seenExcerpts.add(key);
             return true;
           })
+          .slice(0, 3) // Cap at 3 unique sources shown to user
           .map((c) => ({
             filename: c.filename,
             doc_type: c.doc_type,
