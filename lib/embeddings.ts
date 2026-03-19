@@ -4,7 +4,7 @@
 
 import { EmbeddingError } from './errors';
 
-const HF_API_URL = 'https://router.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2';
+const HF_API_URL = 'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction';
 const BATCH_SIZE = 10;
 const MAX_RETRIES = 3;
 export const EMBEDDING_DIM = 384;

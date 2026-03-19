@@ -124,7 +124,7 @@ function splitIntoChunks(text, pageNumbers) {
 }
 
 // ── Embeddings via HuggingFace API ───────────────────────────────────────────
-const HF_API_URL = 'https://router.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2';
+const HF_API_URL = 'https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction';
 const HF_BATCH   = 10;
 const MAX_RETRIES = 3;
 
