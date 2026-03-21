@@ -26,6 +26,8 @@ const config = {
         ...config.resolve.alias,
         '@xenova/transformers': false,
         'onnxruntime-node': false,
+        // react-pdf needs canvas stubbed in Next.js
+        canvas: false,
       };
     }
     return config;
