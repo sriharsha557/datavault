@@ -8,7 +8,7 @@ import type { QueryRequest, MatchedChunk } from '@/types';
 export const maxDuration = 60;
 
 // Step 7: Minimum similarity to attempt an answer — below this, return fallback
-const WEAK_RETRIEVAL_THRESHOLD = 0.30;
+const WEAK_RETRIEVAL_THRESHOLD = 0.20;
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
