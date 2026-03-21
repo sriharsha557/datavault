@@ -60,6 +60,7 @@ export interface QueryRequest {
   top_k?: number;
   chat_history?: Array<{ role: string; content: string }>;
   similarity_threshold?: number;
+  strict_mode?: boolean; // Step 5: strict = docs only, false = allow LLM enrichment
 }
 
 export interface IngestResponse {

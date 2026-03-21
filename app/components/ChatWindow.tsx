@@ -38,6 +38,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
   const [thresholdConfig, setThresholdConfig] = useState<SimilarityThresholdConfig>({ threshold: 0.5, enabled: false });
   const [filterBarOpen, setFilterBarOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [strictMode, setStrictMode] = useState(true);
   const filterPopoverRef = useRef<HTMLDivElement>(null);
   const streamStartRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -96,7 +97,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
       const res = await fetch('/api/query', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, doc_type_filter: docTypeFilter || null, top_k: 5, chat_history: history, ...(thresholdConfig.enabled ? { similarity_threshold: thresholdConfig.threshold } : {}) }),
+        body: JSON.stringify({ query, doc_type_filter: docTypeFilter || null, top_k: 8, chat_history: history, strict_mode: strictMode, ...(thresholdConfig.enabled ? { similarity_threshold: thresholdConfig.threshold } : {}) }),
       });
 
       if (!res.ok) throw new Error('Query failed');
@@ -285,7 +286,19 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
             Filtering: <span className="font-medium text-dv-accent">{DOC_TYPE_OPTIONS.find(o => o.value === docTypeFilter)?.label}</span>
           </span>
         )}
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          {/* Step 5: Strict / Assist mode toggle */}
+          <button
+            onClick={() => setStrictMode((v) => !v)}
+            title={strictMode ? 'Strict mode: answers only from your documents' : 'Assist mode: can use general DV knowledge'}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 border rounded-lg transition-all ${
+              strictMode
+                ? 'border-dv-accent text-dv-accent bg-dv-accent/5'
+                : 'border-dv-border text-dv-muted hover:border-dv-accent hover:text-dv-accent'
+            }`}
+          >
+            {strictMode ? '🔒 Strict' : '🤖 Assist'}
+          </button>
           <SimilarityThresholdSlider onChange={setThresholdConfig} />
         </div>
       </div>

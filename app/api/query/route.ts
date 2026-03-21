@@ -2,10 +2,13 @@ import { NextRequest } from 'next/server';
 import Groq from 'groq-sdk';
 import { createServerClient } from '@/lib/supabase';
 import { getEmbedding } from '@/lib/embeddings';
-import { buildSystemPrompt, buildUserPrompt } from '@/lib/prompt';
+import { buildSystemPrompt, buildUserPrompt, expandQuery } from '@/lib/prompt';
 import type { QueryRequest, MatchedChunk } from '@/types';
 
 export const maxDuration = 60;
+
+// Step 7: Minimum similarity to attempt an answer — below this, return fallback
+const WEAK_RETRIEVAL_THRESHOLD = 0.30;
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -16,10 +19,17 @@ export async function POST(req: NextRequest) {
     async start(controller) {
       const startTime = Date.now();
       let retrievedChunkIds: string[] = [];
-      
+
       try {
         const body: QueryRequest = await req.json();
-        const { query, doc_type_filter, top_k = 12, chat_history = [], similarity_threshold } = body;
+        const {
+          query,
+          doc_type_filter,
+          top_k = 8,           // Step 4: fetch 8, re-rank to top 5
+          chat_history = [],
+          similarity_threshold,
+          strict_mode = true,  // Step 5: strict by default
+        } = body;
 
         if (!query || query.length > 500) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', error: 'Invalid query' })}\n\n`));
@@ -27,8 +37,11 @@ export async function POST(req: NextRequest) {
           return;
         }
 
-        // 1. Generate query embedding
-        const queryEmbedding = await getEmbedding(query);
+        // Step 3: Expand query with definition hints if applicable
+        const expandedQuery = expandQuery(query);
+
+        // 1. Generate query embedding (use expanded query for retrieval)
+        const queryEmbedding = await getEmbedding(expandedQuery);
 
         // 2. Search for similar chunks
         const supabase = createServerClient();
@@ -39,30 +52,38 @@ export async function POST(req: NextRequest) {
         });
 
         if (error || !chunks || chunks.length === 0) {
-          // No docs found — answer as general DV assistant without RAG context
+          // No docs found at all
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources: [] })}\n\n`));
-          const fallback = await groq.chat.completions.create({
-            model: 'llama-3.1-8b-instant',
-            messages: [
-              { role: 'system', content: buildSystemPrompt() },
-              { role: 'user', content: query },
-            ],
-            temperature: 0.3,
-            max_tokens: 1024,
-            stream: true,
-          });
-          for await (const chunk of fallback) {
-            const token = chunk.choices[0]?.delta?.content || '';
-            if (token) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', token })}\n\n`));
+
+          if (strict_mode) {
+            // Strict: refuse to answer without context
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', token: 'The answer is not available in the provided documents.' })}\n\n`));
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'none' })}\n\n`));
+          } else {
+            // Assist mode: fall back to LLM general knowledge
+            const fallback = await groq.chat.completions.create({
+              model: 'llama-3.1-8b-instant',
+              messages: [
+                { role: 'system', content: buildSystemPrompt(false) },
+                { role: 'user', content: query },
+              ],
+              temperature: 0.3,
+              max_tokens: 1024,
+              stream: true,
+            });
+            for await (const chunk of fallback) {
+              const token = chunk.choices[0]?.delta?.content || '';
+              if (token) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', token })}\n\n`));
+            }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'llm' })}\n\n`));
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'llm' })}\n\n`));
           controller.close();
           return;
         }
 
         const matchedChunks = chunks as MatchedChunk[];
 
-        // Apply similarity threshold filter if provided
+        // Apply explicit similarity threshold filter if provided
         let filteredChunks = matchedChunks;
         if (typeof similarity_threshold === 'number') {
           filteredChunks = matchedChunks.filter((c) => c.similarity >= similarity_threshold);
@@ -73,36 +94,42 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        // Step 7: Detect weak retrieval — best chunk is below minimum confidence
+        const bestSimilarity = filteredChunks[0]?.similarity ?? 0;
+        if (bestSimilarity < WEAK_RETRIEVAL_THRESHOLD) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources: [] })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'token', token: 'The answer is not available in the provided documents.' })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'none' })}\n\n`));
+          controller.close();
+          return;
+        }
+
         retrievedChunkIds = filteredChunks.map((c) => c.id);
 
-        // Apply simple re-ranking: boost chunks with higher similarity and preferred doc types
+        // Step 4: Re-rank — boost by doc type and exact term matches, keep top 5
         const rankedChunks = filteredChunks
           .map((chunk) => {
             let score = chunk.similarity;
-            
-            // Boost methodology and hub documents slightly
+
             if (chunk.doc_type === 'methodology') score *= 1.1;
             if (chunk.doc_type === 'hub') score *= 1.05;
-            
-            // Boost if query contains exact technical terms found in chunk
-            const technicalTerms = ['business key', 'satellite', 'hub', 'link', 'pit', 'bridge', 'load date'];
+
+            const technicalTerms = ['business key', 'satellite', 'hub', 'link', 'pit', 'bridge', 'load date', 'hash key', 'record source'];
             const queryLower = query.toLowerCase();
             const contentLower = chunk.content.toLowerCase();
-            
             for (const term of technicalTerms) {
               if (queryLower.includes(term) && contentLower.includes(term)) {
                 score *= 1.15;
                 break;
               }
             }
-            
+
             return { ...chunk, rerank_score: score };
           })
           .sort((a, b) => b.rerank_score - a.rerank_score)
-          .slice(0, 5); // Keep top 5 after re-ranking — enough context, less noise
+          .slice(0, 5);
 
-        // 3. Send sources to client — deduplicate by filename first (keep best chunk per file),
-        // then cap at 3 unique documents shown to user
+        // 3. Deduplicate sources by filename — one entry per document, best chunk wins
         const seenFiles = new Map<string, { similarity: number; content: string; doc_type: string }>();
         for (const c of rankedChunks) {
           const existing = seenFiles.get(c.filename);
@@ -122,8 +149,8 @@ export async function POST(req: NextRequest) {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'sources', sources })}\n\n`));
 
         // 4. Build prompt and stream LLM response
-        const systemPrompt = buildSystemPrompt();
-        const userPrompt = buildUserPrompt(query, rankedChunks, chat_history);
+        const systemPrompt = buildSystemPrompt(strict_mode);
+        const userPrompt = buildUserPrompt(query, rankedChunks, chat_history, strict_mode);
 
         const completion = await groq.chat.completions.create({
           model: 'llama-3.1-8b-instant',
@@ -131,7 +158,7 @@ export async function POST(req: NextRequest) {
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
-          temperature: 0.3,
+          temperature: strict_mode ? 0.1 : 0.3, // lower temp in strict mode = less creativity
           max_tokens: 1024,
           stream: true,
         });
@@ -145,7 +172,7 @@ export async function POST(req: NextRequest) {
 
         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'documents' })}\n\n`));
         controller.close();
-        
+
         // Log query for analytics
         const responseTime = Date.now() - startTime;
         try {
