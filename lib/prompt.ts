@@ -82,7 +82,9 @@ QUESTION: ${query}
 
 INSTRUCTIONS:
 - Answer using ONLY the document context above.
-- Reference the source (e.g. "According to Source 1...") for every claim.
+- Write a clear, natural answer — do NOT start every sentence with "According to Source N".
+- Add a single inline citation only when introducing a key fact, e.g. "Data Vault 2.0 is... [Source 1]".
+- Synthesize across sources into one coherent answer rather than listing each source separately.
 - If the context does not contain the answer, respond: "The answer is not available in the provided documents."
 - Do NOT use any knowledge outside the provided context.`;
   }
