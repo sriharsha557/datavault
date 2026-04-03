@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design document outlines six UX enhancements for the Data Vault Knowledge Assistant to improve user experience, data management, and system resilience. The improvements focus on conversation portability, document management efficiency, query assistance, retrieval quality control, error recovery, and mobile accessibility.
+This design document outlines eight UX enhancements for the Data Vault Knowledge Assistant to improve user experience, data management, system resilience, and enterprise compliance. The improvements focus on conversation portability, document management efficiency, query assistance, retrieval quality control, error recovery, mobile accessibility, user guidance through tooltips, and confidentiality awareness.
 
 The base application uses Next.js 14, React, Supabase (PostgreSQL + pgvector), HuggingFace embeddings (all-MiniLM-L6-v2), and Groq LLM (LLaMA 3.1 8B). These enhancements integrate seamlessly with the existing architecture without requiring major refactoring.
 
@@ -14,6 +14,8 @@ The base application uses Next.js 14, React, Supabase (PostgreSQL + pgvector), H
 4. **Similarity Threshold Slider**: UI control to filter retrieval results by confidence score
 5. **Streaming Error Recovery**: Preserve partial content when streaming fails mid-response
 6. **Mobile Layout**: Responsive admin panel and chat interface for mobile devices
+7. **Tooltip Support**: Hover-state tooltips for specialized controls to improve accessibility and understanding
+8. **Confidentiality Disclaimer**: Persistent warning for enterprise tool usage restrictions
 
 ## Architecture
 
@@ -498,6 +500,108 @@ Touch Optimization:
 - Pull-to-refresh for document list
 
 **UI Location**: Applied globally via responsive layout wrapper
+
+
+### 7. Tooltip Support
+
+**Purpose**: Provide contextual help for specialized controls to improve accessibility and understanding, especially for junior engineers.
+
+**Interface**:
+
+```typescript
+interface TooltipProps {
+  content: string;
+  children: React.ReactNode;
+  position?: 'top' | 'bottom' | 'left' | 'right';
+  delay?: number; // ms before showing
+}
+
+// Component API
+function Tooltip({ content, children, position, delay }: TooltipProps): JSX.Element
+
+// Tooltip content definitions
+const TOOLTIP_CONTENT = {
+  strictMode: 'Strict mode: Answers only from your indexed documents. Assist mode: Can use general Data Vault 2.0 knowledge when documents lack information.',
+  minSimilarity: 'Adjusts the cosine similarity threshold for document retrieval. Higher values (0.6-0.8) return only highly relevant chunks. Lower values (0.3-0.5) cast a wider net but may include less relevant content.',
+  exportButton: 'Export your conversation history as Markdown or PDF for documentation and sharing.',
+  reindexButton: 'Re-process this document with current chunking and embedding settings without re-uploading the file.',
+  queryHistory: 'Recent queries you\'ve submitted. Click to reuse or refine a previous question.',
+};
+```
+
+**Responsibilities**:
+- Display informative tooltips on hover for specialized controls
+- Position tooltips intelligently to avoid viewport overflow
+- Support keyboard navigation (show on focus)
+- Provide clear, concise explanations of control functionality
+- Improve accessibility for screen readers (aria-label)
+
+**Implementation Details**:
+
+Tooltip Component:
+- Use CSS-only tooltips for performance (no JS required for basic functionality)
+- Position using absolute positioning with dynamic placement
+- Show after 500ms hover delay to avoid accidental triggers
+- Hide on mouse leave or focus loss
+- Support keyboard navigation (Escape to dismiss)
+
+Controls Requiring Tooltips:
+1. **Strict Mode Toggle**: Explain difference between strict (documents-only) and assist (general knowledge) modes
+2. **Min Similarity Slider**: Explain cosine similarity threshold and its impact on retrieval quality
+3. **Export Button**: Explain export functionality and available formats
+4. **Re-index Button**: Explain re-ingestion without re-upload
+5. **Query History Dropdown**: Explain purpose of suggestions
+
+Tooltip Content Guidelines:
+- Keep under 100 characters when possible
+- Use plain language, avoid jargon
+- Explain the "why" not just the "what"
+- Include practical guidance (e.g., "Higher values = more precise")
+
+**UI Location**: Applied to all specialized controls in chat interface and admin panel
+
+
+### 8. Confidentiality Disclaimer
+
+**Purpose**: Display a persistent warning to remind users this is an internal enterprise tool with usage restrictions.
+
+**Interface**:
+
+```typescript
+// No component needed - inline implementation in ChatWindow
+// Disclaimer text constant
+const CONFIDENTIALITY_DISCLAIMER = "⚠️ Confidential: Internal enterprise tool. Commercial usage and extraction for LLM training purposes are strictly prohibited.";
+```
+
+**Responsibilities**:
+- Display disclaimer below query input at all times
+- Use muted styling to avoid visual distraction
+- Include warning icon for immediate recognition
+- Remain visible across all chat states
+- Ensure readability on all viewport sizes
+
+**Implementation Details**:
+
+Styling:
+- Font size: `text-xs` (12px) for minimal distraction
+- Color: `text-gray-500` for muted, low-contrast appearance
+- Icon: Warning emoji (⚠️) in amber color (`text-amber-500`)
+- Layout: Centered text with flexbox for icon alignment
+- Spacing: `mt-2` below the "Shift+Enter" hint
+
+Positioning:
+- Directly below query input box
+- Inside the input container's parent div
+- Above the bottom edge of the chat interface
+- Visible on both desktop and mobile viewports
+
+Behavior:
+- Non-interactive (no hover effects or click handlers)
+- Always visible (not conditional on any state)
+- Single line on desktop, wraps gracefully on mobile
+- Does not interfere with input functionality
+
+**UI Location**: Below query input box in ChatWindow, above bottom edge
 
 
 ## Data Models

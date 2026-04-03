@@ -2,7 +2,7 @@
 
 ## Overview
 
-This plan implements six UX enhancements to the Data Vault Knowledge Assistant: conversation export (Markdown/PDF), document re-ingestion, query history suggestions, similarity threshold slider, streaming error recovery, and mobile responsive layout. The implementation uses TypeScript, Next.js 14, React, Tailwind CSS, and the existing Supabase/HuggingFace/Groq stack.
+This plan implements eight UX enhancements to the Data Vault Knowledge Assistant: conversation export (Markdown/PDF), document re-ingestion, query history suggestions, similarity threshold slider, streaming error recovery, mobile responsive layout, tooltip support, and confidentiality disclaimer. The implementation uses TypeScript, Next.js 14, React, Tailwind CSS, and the existing Supabase/HuggingFace/Groq stack.
 
 Each task builds incrementally, wiring new components into the existing `ChatWindow` and `DocumentPanel` as the final step of each feature.
 
@@ -199,7 +199,47 @@ Each task builds incrementally, wiring new components into the existing `ChatWin
     - **Property 15: Touch Target Size**
     - **Validates: Requirement 6.4**
 
-- [ ] 12. Final checkpoint — All features integrated
+- [ ] 12. Implement Tooltip Support
+  - [ ] 12.1 Create `app/components/Tooltip.tsx` component
+    - Implement tooltip component with configurable position (top, bottom, left, right)
+    - Add 500ms hover delay before showing tooltip
+    - Support keyboard navigation (show on focus, dismiss with Escape)
+    - Position tooltips dynamically to avoid viewport overflow
+    - Include aria-label attributes for accessibility
+    - _Requirements: 7.6, 7.7, 7.8, 7.10_
+
+  - [ ] 12.2 Define tooltip content constants in `lib/tooltipContent.ts`
+    - Create TOOLTIP_CONTENT object with explanatory text for each control
+    - Strict mode: "Strict mode: Answers only from your indexed documents. Assist mode: Can use general Data Vault 2.0 knowledge when documents lack information."
+    - Min similarity: "Adjusts the cosine similarity threshold for document retrieval. Higher values (0.6-0.8) return only highly relevant chunks. Lower values (0.3-0.5) cast a wider net but may include less relevant content."
+    - Export button: "Export your conversation history as Markdown or PDF for documentation and sharing."
+    - Re-index button: "Re-process this document with current chunking and embedding settings without re-uploading the file."
+    - Query history: "Recent queries you've submitted. Click to reuse or refine a previous question."
+    - Ensure all content is under 150 characters and uses plain language
+    - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.9_
+
+  - [ ] 12.3 Add tooltips to ChatWindow controls
+    - Wrap Strict Mode toggle with Tooltip component
+    - Wrap Min Similarity slider label with Tooltip component
+    - Wrap Export button with Tooltip component
+    - Wrap Query History dropdown trigger with Tooltip component
+    - _Requirements: 7.1, 7.2, 7.3, 7.5_
+
+  - [ ] 12.4 Add tooltips to DocumentPanel controls
+    - Wrap Re-index button with Tooltip component
+    - _Requirements: 7.4_
+
+- [x] 13. Implement Confidentiality Disclaimer
+  - [x] 13.1 Add disclaimer to ChatWindow below query input
+    - Add disclaimer text: "⚠️ Confidential: Internal enterprise tool. Commercial usage and extraction for LLM training purposes are strictly prohibited."
+    - Style with text-xs, text-gray-500 for muted appearance
+    - Include warning icon (⚠️) in amber color (text-amber-500)
+    - Position directly below "Shift+Enter" hint
+    - Center-align with flexbox for icon and text
+    - Ensure visibility on all viewport sizes
+    - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 8.9, 8.10_
+
+- [ ] 14. Final checkpoint — All features integrated
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes

@@ -495,6 +495,10 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
             </div>
           </div>
           <p className="text-[10px] text-dv-muted mt-1.5 text-center">Shift+Enter for new line · Enter to send</p>
+          <p className="text-xs text-gray-500 mt-2 text-center flex items-center justify-center gap-1.5">
+            <span className="text-amber-500">⚠️</span>
+            <span>Confidential: Internal enterprise tool. Commercial usage and extraction for LLM training purposes are strictly prohibited.</span>
+          </p>
         </div>
       </div>
 

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-This document defines requirements for six UX and feature improvements to the Data Vault Knowledge Assistant. The enhancements improve conversation portability (export), document management efficiency (re-ingestion), query assistance (history suggestions), retrieval quality control (similarity threshold), system resilience (streaming error recovery), and mobile accessibility (responsive layout).
+This document defines requirements for eight UX and feature improvements to the Data Vault Knowledge Assistant. The enhancements improve conversation portability (export), document management efficiency (re-ingestion), query assistance (history suggestions), retrieval quality control (similarity threshold), system resilience (streaming error recovery), mobile accessibility (responsive layout), user guidance (tooltip support), and enterprise compliance (confidentiality disclaimer).
 
 The base application uses Next.js 14, React, Supabase (PostgreSQL + pgvector), HuggingFace embeddings (all-MiniLM-L6-v2), and Groq LLM (LLaMA 3.1 8B). All enhancements integrate with the existing architecture without major refactoring.
 
@@ -22,6 +22,9 @@ The base application uses Next.js 14, React, Supabase (PostgreSQL + pgvector), H
 - **Layout_Manager**: The responsive layout subsystem detecting viewport breakpoints and applying appropriate styles
 - **Document_Chunk**: A semantically meaningful segment of a source document with an associated embedding vector
 - **Partial_Content**: Streamed response tokens received before a streaming connection failure
+- **Tooltip_Manager**: The UI component system responsible for displaying contextual help on hover or focus
+- **Accessibility_Label**: ARIA attributes that provide text alternatives for screen readers
+- **Confidentiality_Disclaimer**: A persistent warning message informing users of enterprise tool restrictions and usage policies
 
 ## Requirements
 
@@ -115,4 +118,38 @@ The base application uses Next.js 14, React, Supabase (PostgreSQL + pgvector), H
 5. WHILE on a mobile viewport, THE Chat_Interface SHALL display a collapsible filter bar to preserve vertical space
 6. WHILE on a mobile viewport, THE Chat_Interface SHALL anchor the query input to the bottom of the viewport and handle virtual keyboard appearance
 7. IF the viewport width is below 320px, THEN THE Layout_Manager SHALL display an overlay message recommending landscape orientation or a larger device
+
+### Requirement 7: Tooltip Support
+
+**User Story:** As a junior engineer or new user, I want to see explanatory tooltips when I hover over specialized controls, so that I can understand what each control does without consulting documentation.
+
+#### Acceptance Criteria
+
+1. WHEN a user hovers over the Strict Mode toggle, THE Chat_Interface SHALL display a tooltip explaining the difference between strict mode (documents-only) and assist mode (general knowledge)
+2. WHEN a user hovers over the Min Similarity slider, THE Chat_Interface SHALL display a tooltip explaining cosine similarity threshold and its impact on retrieval quality
+3. WHEN a user hovers over the Export button, THE Chat_Interface SHALL display a tooltip explaining the export functionality
+4. WHEN a user hovers over the Re-index button, THE Admin_Panel SHALL display a tooltip explaining re-ingestion without re-upload
+5. WHEN a user hovers over the Query History dropdown, THE Chat_Interface SHALL display a tooltip explaining the purpose of query suggestions
+6. ALL tooltips SHALL appear after a 500ms hover delay to avoid accidental triggers
+7. ALL tooltips SHALL be positioned to avoid viewport overflow, adjusting position dynamically if needed
+8. ALL tooltips SHALL be accessible via keyboard navigation, appearing on focus and dismissible with Escape key
+9. ALL tooltip content SHALL be under 150 characters and use plain language accessible to junior engineers
+10. ALL tooltips SHALL include aria-label attributes for screen reader accessibility
+
+### Requirement 8: Confidentiality Disclaimer
+
+**User Story:** As a compliance officer, I want a visible confidentiality disclaimer displayed in the chat interface, so that users are reminded this is an internal enterprise tool and content should not be extracted for external use.
+
+#### Acceptance Criteria
+
+1. THE Chat_Interface SHALL display a confidentiality disclaimer directly below the query input box at all times
+2. THE disclaimer text SHALL read: "⚠️ Confidential: Internal enterprise tool. Commercial usage and extraction for LLM training purposes are strictly prohibited."
+3. THE disclaimer SHALL use small font size (11px or 12px / text-xs in Tailwind) to minimize visual distraction
+4. THE disclaimer SHALL use muted, low-contrast color (text-gray-500 or similar) that is legible but not prominent
+5. THE disclaimer SHALL include a warning icon (⚠️) at the beginning to immediately communicate policy importance
+6. THE disclaimer SHALL remain visible on both desktop and mobile viewports
+7. THE disclaimer SHALL be positioned to not interfere with the query input or submit button functionality
+8. THE disclaimer SHALL be non-interactive (no click handlers or hover effects)
+9. THE disclaimer SHALL use a single line of text on desktop and wrap gracefully on mobile if needed
+10. THE disclaimer SHALL be visible during all chat states (empty, active conversation, streaming response)
 
