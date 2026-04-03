@@ -10,7 +10,14 @@ export const maxDuration = 60;
 // Step 7: Minimum similarity to attempt an answer — below this, return fallback
 const WEAK_RETRIEVAL_THRESHOLD = 0.15;
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Initialize Groq client with validation
+function getGroqClient() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error('GROQ_API_KEY environment variable is not set');
+  }
+  return new Groq({ apiKey });
+}
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
@@ -41,21 +48,47 @@ export async function POST(req: NextRequest) {
         const expandedQuery = expandQuery(query);
 
         // 1. Generate query embedding (use expanded query for retrieval)
-        const queryEmbedding = await getEmbedding(expandedQuery);
+        let queryEmbedding: number[];
+        try {
+          queryEmbedding = await getEmbedding(expandedQuery);
+        } catch (embErr: any) {
+          console.error('[query] Embedding generation failed:', embErr.message);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'error', 
+            error: 'Failed to generate query embedding. Please try again.' 
+          })}\n\n`));
+          controller.close();
+          return;
+        }
+        
+        // Validate embedding dimensions (should never fail after retry logic, but double-check)
+        if (!queryEmbedding || queryEmbedding.length !== 384) {
+          console.error('[query] Invalid embedding dimensions after retries:', queryEmbedding?.length);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'error', 
+            error: 'Embedding validation failed. Please try again.' 
+          })}\n\n`));
+          controller.close();
+          return;
+        }
 
         // 2. Search for similar chunks
         const supabase = createServerClient();
 
-        // Convert embedding to Postgres vector string format: '[0.1,0.2,...]'
-        const embeddingStr = `[${queryEmbedding.join(',')}]`;
-        
+        // Debug: Log embedding details
+        console.log('[query] Embedding type:', typeof queryEmbedding, 'isArray:', Array.isArray(queryEmbedding));
+        console.log('[query] Embedding length:', queryEmbedding.length);
+        console.log('[query] First 3 values:', queryEmbedding.slice(0, 3));
+
+        // Send embedding as JSON array (PostgREST converts to jsonb)
         const { data: rpcData, error: rpcError } = await supabase.rpc('match_chunks', {
-          query_embedding: embeddingStr,
+          query_embedding: queryEmbedding,
           match_count: top_k,
           filter_doc_type: doc_type_filter ?? null,
         });
 
         console.log('[query] chunks:', rpcData?.length ?? 0, 'err:', rpcError?.message ?? 'none');
+        if (rpcError) console.error('[query] RPC error details:', rpcError);
         if (rpcData?.length) console.log('[query] sims:', (rpcData as MatchedChunk[]).slice(0,3).map((c:MatchedChunk) => c.similarity?.toFixed(3)));
 
         const chunks = rpcData as MatchedChunk[] | null;
@@ -71,6 +104,7 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'none' })}\n\n`));
           } else {
             // Assist mode: fall back to LLM general knowledge
+            const groq = getGroqClient();
             const fallback = await groq.chat.completions.create({
               model: 'llama-3.1-8b-instant',
               messages: [
@@ -123,6 +157,7 @@ export async function POST(req: NextRequest) {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done', answerSource: 'none' })}\n\n`));
           } else {
             // Assist mode: answer from general knowledge with disclaimer
+            const groq = getGroqClient();
             const fallback = await groq.chat.completions.create({
               model: 'llama-3.1-8b-instant',
               messages: [
@@ -220,6 +255,7 @@ export async function POST(req: NextRequest) {
         const systemPrompt = buildSystemPrompt(strict_mode);
         const userPrompt = buildUserPrompt(query, rankedChunks, chat_history, strict_mode);
 
+        const groq = getGroqClient();
         const completion = await groq.chat.completions.create({
           model: 'llama-3.1-8b-instant',
           messages: [

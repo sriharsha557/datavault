@@ -43,11 +43,37 @@ export async function GET(req: NextRequest) {
 
   if (query.trim()) {
     // Semantic search scoped to this document
-    const embedding = await getEmbedding(query);
-    const embeddingStr = `[${embedding.join(',')}]`;
+    let embedding: number[];
+    try {
+      embedding = await getEmbedding(query);
+    } catch (embErr: any) {
+      console.error('[doc-chunks] Embedding generation failed:', embErr.message);
+      // Fallback to returning chunks by index order
+      const { data: fallback } = await supabase
+        .from('chunks')
+        .select('id, content, doc_type, metadata, chunk_index')
+        .eq('document_id', doc.id)
+        .order('chunk_index', { ascending: true })
+        .limit(limit);
+      rawChunks = (fallback ?? []) as typeof rawChunks;
+      
+      return NextResponse.json(
+        rawChunks.map((c) => ({
+          id: c.id,
+          content: cleanContent(c.content),
+          doc_type: c.doc_type,
+          chunk_index: c.chunk_index,
+          similarity: null,
+          section: c.metadata?.section ?? null,
+          page_range: c.metadata?.page_range ?? null,
+          content_type: c.metadata?.content_type ?? null,
+          keywords: c.metadata?.keywords ?? [],
+        }))
+      );
+    }
 
     const { data, error } = await supabase.rpc('match_chunks_in_doc', {
-      query_embedding: embeddingStr,
+      query_embedding: embedding,
       doc_id: doc.id,
       match_count: limit,
     });

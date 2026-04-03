@@ -55,8 +55,35 @@ async function makeHFRequest(inputs: string | string[]): Promise<number[] | numb
 }
 
 export async function getEmbedding(text: string): Promise<number[]> {
-  const data = await makeHFRequest(text);
-  return Array.isArray(data[0]) ? (data as number[][])[0] : (data as number[]);
+  const MAX_DIMENSION_RETRIES = 5;
+  
+  for (let attempt = 1; attempt <= MAX_DIMENSION_RETRIES; attempt++) {
+    const data = await makeHFRequest(text);
+    const embedding = Array.isArray(data[0]) ? (data as number[][])[0] : (data as number[]);
+    
+    // Validate embedding dimensions
+    if (embedding && embedding.length === EMBEDDING_DIM) {
+      if (attempt > 1) {
+        console.log(`[embeddings] ✅ Got correct dimensions on attempt ${attempt}`);
+      }
+      return embedding;
+    }
+    
+    // Dimension mismatch - log and retry
+    console.error(`[embeddings] ❌ Attempt ${attempt}/${MAX_DIMENSION_RETRIES}: got ${embedding?.length} dims, expected ${EMBEDDING_DIM}`);
+    console.error(`[embeddings] Input text length: ${text.length} chars, first 100: ${text.slice(0, 100)}`);
+    
+    if (attempt < MAX_DIMENSION_RETRIES) {
+      const backoff = attempt * 1000; // 1s, 2s, 3s, 4s
+      console.log(`[embeddings] Retrying in ${backoff}ms...`);
+      await sleep(backoff);
+    } else {
+      // Final attempt failed
+      throw new EmbeddingError(`HF API returned wrong dimensions after ${MAX_DIMENSION_RETRIES} attempts: got ${embedding?.length}, expected ${EMBEDDING_DIM}`);
+    }
+  }
+  
+  throw new EmbeddingError('Failed to get valid embedding dimensions');
 }
 
 export async function getEmbeddingsBatch(texts: string[]): Promise<number[][]> {

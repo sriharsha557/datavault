@@ -91,6 +91,27 @@ function getPageNumber(offset, pageNumbers) {
   return closest;
 }
 
+/**
+ * Returns true if a text block looks like a TOC page or heading-only content.
+ * Used to skip low-value chunks during ingestion.
+ */
+function isTOCOrHeading(text) {
+  if (/table of contents/i.test(text)) return true;
+
+  // Mostly numbered heading lines (e.g. "4.4 Hub Definition\n4.5 Link...")
+  const tocLinePattern = /^\s*\d+(\.\d+)*\s+[A-Z]/gm;
+  const tocLines = (text.match(tocLinePattern) || []).length;
+  const totalLines = text.split('\n').filter(Boolean).length;
+  if (totalLines > 4 && tocLines / totalLines > 0.6) return true;
+
+  // Very sparse content — fewer than 2.5 words per line and short overall
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const lines = text.split('\n').filter(Boolean).length;
+  if (lines > 0 && words / lines < 2.5 && text.length < 300) return true;
+
+  return false;
+}
+
 function splitIntoChunks(text, pageNumbers) {
   const trimmed = text.trim();
   const chunks  = [];
@@ -110,7 +131,7 @@ function splitIntoChunks(text, pageNumbers) {
     }
 
     const content = trimmed.substring(startOffset, endOffset).trim();
-    if (content.length >= MIN_CHUNK_LEN) {
+    if (content.length >= MIN_CHUNK_LEN && !isTOCOrHeading(content)) {
       chunks.push({ content, chunk_index: chunkIndex++, pageNumber: getPageNumber(startOffset, pageNumbers) });
     }
 

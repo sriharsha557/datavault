@@ -34,13 +34,41 @@ const DEFINITION_TRIGGERS = [
   'overview', 'introduction', 'concept', 'meaning', 'purpose',
 ];
 
+// DV term → expansion phrases that match how books actually write about them
+const DV_TERM_EXPANSIONS: Record<string, string> = {
+  hub:         'hub is a central table stores unique business keys business entity',
+  hubs:        'hub is a central table stores unique business keys business entity',
+  link:        'link table relationship association between hubs many-to-many',
+  links:       'link table relationship association between hubs many-to-many',
+  satellite:   'satellite descriptive attributes context history changes over time',
+  satellites:  'satellite descriptive attributes context history changes over time',
+  pit:         'point-in-time table performance snapshot satellite joins',
+  bridge:      'bridge table multi-active satellite span query performance',
+  'business key': 'business key natural key unique identifier source system',
+  'hash key':  'hash key surrogate key computed hash business key',
+  'load date': 'load date stamp ldts record source audit columns',
+  'raw vault': 'raw vault staging area uninterpreted data as-is source',
+  'business vault': 'business vault derived calculated soft rules interpretations',
+  'data vault': 'data vault 2.0 methodology architecture modeling',
+};
+
 export function expandQuery(query: string): string {
   const lower = query.toLowerCase();
   const isDefinitionQuery = DEFINITION_TRIGGERS.some((t) => lower.includes(t));
-  if (isDefinitionQuery) {
-    return `${query} definition overview introduction`;
+
+  // Collect DV-specific expansions for any terms found in the query
+  const termExpansions: string[] = [];
+  for (const [term, expansion] of Object.entries(DV_TERM_EXPANSIONS)) {
+    if (lower.includes(term)) {
+      termExpansions.push(expansion);
+    }
   }
-  return query;
+
+  const parts = [query];
+  if (isDefinitionQuery) parts.push('definition overview introduction purpose');
+  if (termExpansions.length > 0) parts.push(...termExpansions);
+
+  return parts.join(' ');
 }
 
 // ── Step 6: User prompt with forced citations ─────────────────────────────────
