@@ -10,6 +10,7 @@ import SimilarityThresholdSlider from './SimilarityThresholdSlider';
 import type { SimilarityThresholdConfig } from '@/types';
 import StreamingErrorBanner from './StreamingErrorBanner';
 import { StreamingBuffer } from '@/lib/streamingBuffer';
+import DocumentViewerModal from './DocumentViewerModal';
 
 const SUGGESTED = [
   'What defines a Hub in Data Vault?',
@@ -39,6 +40,8 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
   const [filterBarOpen, setFilterBarOpen] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [strictMode, setStrictMode] = useState(true);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerFile, setViewerFile] = useState<{ filename: string; query: string } | null>(null);
   const filterPopoverRef = useRef<HTMLDivElement>(null);
   const streamStartRef = useRef<number>(0);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -448,7 +451,7 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
                 </div>
               ) : (
                 <div className="space-y-2 w-full">
-                  <AssistantBubble msg={msg} onRetry={(q) => { setMessages((prev) => prev.filter((m) => m.id !== msg.id)); sendMessage(q); }} onKeep={() => setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, hasError: false } : m))} onEditRetry={(q) => { setMessages((prev) => prev.filter((m) => m.id !== msg.id)); setInput(q); inputRef.current?.focus(); }} />
+                  <AssistantBubble msg={msg} onRetry={(q) => { setMessages((prev) => prev.filter((m) => m.id !== msg.id)); sendMessage(q); }} onKeep={() => setMessages((prev) => prev.map((m) => m.id === msg.id ? { ...m, hasError: false } : m))} onEditRetry={(q) => { setMessages((prev) => prev.filter((m) => m.id !== msg.id)); setInput(q); inputRef.current?.focus(); }} onOpenDoc={(filename) => { setViewerFile({ filename, query: msg.query || '' }); setViewerOpen(true); }} />
                 </div>
               )}
             </div>
@@ -494,15 +497,27 @@ export default function ChatWindow({ hasDocuments }: { hasDocuments: boolean }) 
           <p className="text-[10px] text-dv-muted mt-1.5 text-center">Shift+Enter for new line · Enter to send</p>
         </div>
       </div>
+
+      {/* Document viewer modal */}
+      {viewerFile && (
+        <DocumentViewerModal
+          isOpen={viewerOpen}
+          onClose={() => setViewerOpen(false)}
+          fileUrl={`/api/documents/chunks?filename=${encodeURIComponent(viewerFile.filename)}&query=${encodeURIComponent(viewerFile.query)}&limit=6`}
+          title={viewerFile.filename}
+          highlightText={viewerFile.query}
+        />
+      )}
     </div>
   );
 }
 
-function AssistantBubble({ msg, onRetry, onKeep, onEditRetry }: {
+function AssistantBubble({ msg, onRetry, onKeep, onEditRetry, onOpenDoc }: {
   msg: ChatMessage;
   onRetry: (q: string) => void;
   onKeep: () => void;
   onEditRetry: (q: string) => void;
+  onOpenDoc: (filename: string) => void;
 }) {
   const COLLAPSE_THRESHOLD = 600; // chars
   const [collapsed, setCollapsed] = useState(false);
@@ -575,7 +590,7 @@ function AssistantBubble({ msg, onRetry, onKeep, onEditRetry }: {
         )}
       </div>
 
-      {msg.sources && msg.sources.length > 0 && <SourceList sources={msg.sources} />}
+      {msg.sources && msg.sources.length > 0 && <SourceList sources={msg.sources} onOpenDoc={onOpenDoc} />}
 
       {/* Hover-only actions */}
       {!msg.isStreaming && msg.content && msg.content !== '__no_results__' && !msg.hasError && (
@@ -670,7 +685,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   hub: 'Hub', link: 'Link', satellite: 'Sat', pit_bridge: 'PIT/Bridge', methodology: 'Method', general: 'General',
 };
 
-function SourceList({ sources }: { sources: Source[] }) {
+function SourceList({ sources, onOpenDoc }: { sources: Source[]; onOpenDoc: (filename: string) => void }) {
   const [open, setOpen] = useState(false);
 
   // Group by filename
@@ -710,6 +725,16 @@ function SourceList({ sources }: { sources: Source[] }) {
                 )}
                 <span className="text-[11px] font-medium text-dv-text truncate flex-1">{filename}</span>
                 <span className="text-[10px] text-dv-muted flex-shrink-0">{Math.round(info.bestSimilarity * 100)}%</span>
+                <button
+                  onClick={() => onOpenDoc(filename)}
+                  className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded border border-dv-border text-dv-muted hover:border-dv-accent hover:text-dv-accent transition-colors flex-shrink-0"
+                  title="View document"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                  </svg>
+                  Open
+                </button>
               </div>
               {/* Only show excerpt if multiple files — single file just shows the name */}
               {!singleFile && (

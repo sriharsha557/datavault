@@ -1,20 +1,20 @@
 'use client';
 
 /**
- * DocumentViewerModal — unified document viewer modal
+ * DocumentViewerModal — unified document viewer
  *
- * One modal shell, three content renderers:
- *   .pdf  → PDF.js (react-pdf) with page nav + text highlight
- *   .docx → mammoth (browser build) → HTML → rendered inline
- *   .json / .jsonl → chunks → Markdown → react-markdown
+ * Renderers:
+ *   pdf   → react-pdf (PDF.js) with page nav + text highlight
+ *   docx  → mammoth browser build → HTML
+ *   json  → chunks array → Markdown → react-markdown
  *
  * Props:
  *   isOpen        — controlled open state
  *   onClose       — close callback
- *   fileUrl       — URL/path to the file (extension determines renderer)
- *   title         — display name shown in header
- *   pageNumber    — (PDF only) page to jump to on open
- *   highlightText — text to highlight (string or string[])
+ *   fileUrl       — URL to fetch (extension or path pattern picks renderer)
+ *   title         — header display name
+ *   pageNumber    — (PDF) initial page
+ *   highlightText — phrase(s) to highlight
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
@@ -28,6 +28,7 @@ pdfjs.GlobalWorkerOptions.workerSrc =
   `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface DocumentViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -39,35 +40,41 @@ export interface DocumentViewerModalProps {
 
 type FileType = 'pdf' | 'docx' | 'json' | 'unknown';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function detectType(url: string): FileType {
+  if (url.includes('/api/documents/chunks')) return 'json';
   const ext = url.split('?')[0].split('.').pop()?.toLowerCase();
-  if (ext === 'pdf')  return 'pdf';
+  if (ext === 'pdf') return 'pdf';
   if (ext === 'docx') return 'docx';
   if (ext === 'json' || ext === 'jsonl') return 'json';
   return 'unknown';
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
 function normaliseHighlights(h?: string | string[]): string[] {
   if (!h) return [];
   return (Array.isArray(h) ? h : [h]).filter(Boolean);
 }
 
-/** Wrap matching phrases in <mark> inside a plain string */
+function escapeRegex(s: string): string {
+  return s.replace(/[$()*+.?[\\\]^{|}]/g, String.raw`\$&`);
+}
+
 function applyHighlights(text: string, phrases: string[]): string {
   let out = text;
   for (const p of phrases) {
     if (!p.trim()) continue;
-    const esc = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     out = out.replace(
-      new RegExp(esc, 'gi'),
-      (m) => `<mark style="background:rgba(250,204,21,0.55);border-radius:3px;padding:0 1px;">${m}</mark>`,
+      new RegExp(escapeRegex(p), 'gi'),
+      (m) =>
+        `<mark style="background:rgba(250,204,21,0.55);border-radius:3px;padding:0 1px;">${m}</mark>`,
     );
   }
   return out;
 }
 
 // ── Modal shell ───────────────────────────────────────────────────────────────
+
 export default function DocumentViewerModal({
   isOpen,
   onClose,
@@ -77,31 +84,30 @@ export default function DocumentViewerModal({
   highlightText,
 }: DocumentViewerModalProps) {
   const fileType = detectType(fileUrl);
-  const phrases  = normaliseHighlights(highlightText);
+  const phrases = normaliseHighlights(highlightText);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // ESC to close
   useEffect(() => {
     if (!isOpen) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  // Lock body scroll
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
-  // Focus trap
   useEffect(() => {
     if (isOpen) modalRef.current?.focus();
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const displayTitle = title ?? fileUrl.split('/').pop() ?? 'Document';
+  const displayTitle = title ?? fileUrl.split('/').pop()?.split('?')[0] ?? 'Document';
 
   return (
     <div
@@ -118,7 +124,7 @@ export default function DocumentViewerModal({
         style={{ width: '85vw', maxWidth: 960, height: '88vh' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 bg-white dark:bg-gray-900">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <FileIcon type={fileType} />
             <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
@@ -132,54 +138,66 @@ export default function DocumentViewerModal({
             aria-label="Close viewer"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
         </div>
 
-        {/* Content — renderer selected by file type */}
+        {/* Content */}
         <div className="flex-1 overflow-hidden flex flex-col">
-          {fileType === 'pdf'  && <PdfRenderer     fileUrl={fileUrl} pageNumber={pageNumber} phrases={phrases} />}
-          {fileType === 'docx' && <DocxRenderer    fileUrl={fileUrl} phrases={phrases} />}
-          {fileType === 'json' && <JsonRenderer    fileUrl={fileUrl} phrases={phrases} />}
-          {fileType === 'unknown' && <UnknownRenderer fileUrl={fileUrl} />}
+          {fileType === 'pdf'     && <PdfViewer     fileUrl={fileUrl} pageNumber={pageNumber} phrases={phrases} />}
+          {fileType === 'docx'    && <DocxViewer    fileUrl={fileUrl} phrases={phrases} />}
+          {fileType === 'json'    && <JsonViewer    fileUrl={fileUrl} phrases={phrases} />}
+          {fileType === 'unknown' && <UnknownViewer fileUrl={fileUrl} />}
         </div>
       </div>
     </div>
   );
 }
 
-// ── PDF renderer ──────────────────────────────────────────────────────────────
-function PdfRenderer({ fileUrl, pageNumber, phrases }: {
-  fileUrl: string; pageNumber: number; phrases: string[];
+// ── PdfViewer ─────────────────────────────────────────────────────────────────
+
+function PdfViewer({
+  fileUrl,
+  pageNumber,
+  phrases,
+}: {
+  fileUrl: string;
+  pageNumber: number;
+  phrases: string[];
 }) {
-  const [numPages, setNumPages]       = useState(0);
-  const [current, setCurrent]         = useState(pageNumber);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState<string | null>(null);
-  const [containerWidth, setWidth]    = useState(800);
+  const [numPages, setNumPages] = useState(0);
+  const [current, setCurrent] = useState(pageNumber);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [containerWidth, setWidth] = useState(800);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { setCurrent(pageNumber); }, [pageNumber]);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const ro = new ResizeObserver((e) => {
-      const w = e[0]?.contentRect.width;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width;
       if (w) setWidth(Math.floor(w) - 32);
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
 
-  const textRenderer = useCallback(({ str }: { str: string }) =>
-    applyHighlights(str, phrases), [phrases]);
+  const textRenderer = useCallback(
+    ({ str }: { str: string }) => applyHighlights(str, phrases),
+    [phrases],
+  );
 
   const goTo = (p: number) => setCurrent(Math.max(1, Math.min(p, numPages)));
 
   return (
     <>
-      <div ref={containerRef} className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-800 flex flex-col items-center py-4 px-4">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto bg-gray-100 dark:bg-gray-800 flex flex-col items-center py-4 px-4"
+      >
         {error ? (
           <ErrorState message={error} />
         ) : (
@@ -204,18 +222,20 @@ function PdfRenderer({ fileUrl, pageNumber, phrases }: {
         )}
       </div>
 
-      {/* PDF footer nav */}
       {!loading && !error && numPages > 0 && (
         <div className="flex items-center justify-center gap-3 px-5 py-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 flex-shrink-0">
           <NavButton onClick={() => goTo(current - 1)} disabled={current <= 1} dir="prev" />
           <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-            <span>Go to</span>
+            Go to
             <input
-              type="number" min={1} max={numPages} value={current}
+              type="number"
+              min={1}
+              max={numPages}
+              value={current}
               onChange={(e) => goTo(Number(e.target.value))}
               className="w-14 text-center border border-gray-300 dark:border-gray-600 rounded-md px-1.5 py-1 text-xs bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-blue-400"
             />
-            <span>/ {numPages}</span>
+            / {numPages}
           </span>
           <NavButton onClick={() => goTo(current + 1)} disabled={current >= numPages} dir="next" />
         </div>
@@ -224,9 +244,10 @@ function PdfRenderer({ fileUrl, pageNumber, phrases }: {
   );
 }
 
-// ── DOCX renderer ─────────────────────────────────────────────────────────────
-function DocxRenderer({ fileUrl, phrases }: { fileUrl: string; phrases: string[] }) {
-  const [html, setHtml]   = useState<string | null>(null);
+// ── DocxViewer ────────────────────────────────────────────────────────────────
+
+function DocxViewer({ fileUrl, phrases }: { fileUrl: string; phrases: string[] }) {
+  const [html, setHtml] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -236,7 +257,6 @@ function DocxRenderer({ fileUrl, phrases }: { fileUrl: string; phrases: string[]
         const res = await fetch(fileUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const buf = await res.arrayBuffer();
-        // mammoth browser build — dynamic import to avoid SSR issues
         const mammoth = (await import('mammoth/mammoth.browser')).default;
         const { value } = await mammoth.convertToHtml({ arrayBuffer: buf });
         if (!cancelled) setHtml(phrases.length ? applyHighlights(value, phrases) : value);
@@ -248,7 +268,7 @@ function DocxRenderer({ fileUrl, phrases }: { fileUrl: string; phrases: string[]
   }, [fileUrl, phrases]);
 
   if (error) return <div className="flex-1 flex items-center justify-center"><ErrorState message={error} /></div>;
-  if (!html)  return <div className="flex-1 flex items-center justify-center"><Spinner /></div>;
+  if (!html) return <div className="flex-1 flex items-center justify-center"><Spinner /></div>;
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6 bg-white dark:bg-gray-900">
@@ -260,10 +280,21 @@ function DocxRenderer({ fileUrl, phrases }: { fileUrl: string; phrases: string[]
   );
 }
 
-// ── JSON renderer ─────────────────────────────────────────────────────────────
-function JsonRenderer({ fileUrl, phrases }: { fileUrl: string; phrases: string[] }) {
-  const [markdown, setMarkdown] = useState<string | null>(null);
-  const [error, setError]       = useState<string | null>(null);
+// ── JsonViewer ────────────────────────────────────────────────────────────────
+
+interface Chunk {
+  content?: string;
+  section?: string;
+  page_range?: string | number;
+  content_type?: string;
+  keywords?: string[];
+  similarity?: number;
+  [key: string]: unknown;
+}
+
+function JsonViewer({ fileUrl, phrases }: { fileUrl: string; phrases: string[] }) {
+  const [chunks, setChunks] = useState<Chunk[] | null>(null);
+  const [error, setError]   = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -272,61 +303,114 @@ function JsonRenderer({ fileUrl, phrases }: { fileUrl: string; phrases: string[]
         const res = await fetch(fileUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
-
-        // Parse JSON array or JSONL
-        let chunks: Record<string, unknown>[] = [];
         const trimmed = text.trim();
+        let parsed: Chunk[];
         if (trimmed.startsWith('[')) {
-          chunks = JSON.parse(trimmed);
+          parsed = JSON.parse(trimmed);
         } else {
-          // JSONL
-          chunks = trimmed.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+          parsed = trimmed.split('\n').filter(Boolean).map((l) => JSON.parse(l));
         }
-
-        // Convert chunks to readable markdown
-        const md = chunks.map((c, i) => {
-          const section = c.section ? `### ${c.section}` : `### Chunk ${i + 1}`;
-          const meta: string[] = [];
-          if (c.page_range)   meta.push(`📄 Page ${c.page_range}`);
-          if (c.content_type) meta.push(`Type: ${c.content_type}`);
-          if (Array.isArray(c.keywords) && c.keywords.length)
-            meta.push(`Keywords: ${(c.keywords as string[]).join(', ')}`);
-          const metaLine = meta.length ? `\n*${meta.join(' · ')}*\n` : '';
-          return `${section}\n${metaLine}\n${c.content ?? ''}`;
-        }).join('\n\n---\n\n');
-
-        if (!cancelled) setMarkdown(md);
+        if (!cancelled) setChunks(parsed);
       } catch (e: unknown) {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load JSON');
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load content');
       }
     })();
     return () => { cancelled = true; };
   }, [fileUrl]);
 
-  if (error)    return <div className="flex-1 flex items-center justify-center"><ErrorState message={error} /></div>;
-  if (!markdown) return <div className="flex-1 flex items-center justify-center"><Spinner /></div>;
+  if (error)   return <div className="flex-1 flex items-center justify-center"><ErrorState message={error} /></div>;
+  if (!chunks) return <div className="flex-1 flex items-center justify-center"><Spinner /></div>;
 
-  // Apply highlights to the rendered markdown text via CSS ::highlight or mark injection
-  const highlighted = phrases.length ? applyHighlights(markdown, phrases) : null;
+  const hasQuery = phrases.length > 0;
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 py-6 bg-white dark:bg-gray-900">
-      {highlighted ? (
-        <div
-          className="prose prose-sm dark:prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ __html: highlighted }}
-        />
-      ) : (
-        <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdown}</ReactMarkdown>
+    <div className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+      <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-6 py-2.5 flex items-center gap-2">
+        <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">
+          {hasQuery
+            ? `${chunks.length} relevant passage${chunks.length !== 1 ? 's' : ''} found`
+            : `${chunks.length} section${chunks.length !== 1 ? 's' : ''}`}
+        </span>
+        {hasQuery && (
+          <span className="text-xs text-gray-400">· ranked by relevance</span>
+        )}
+      </div>
+      <div className="px-6 py-4 space-y-3">
+        {chunks.map((chunk, i) => (
+          <SnippetCard key={i} chunk={chunk} phrases={phrases} rank={hasQuery ? i + 1 : undefined} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SnippetCard({ chunk, phrases, rank }: { chunk: Chunk; phrases: string[]; rank?: number }) {
+  const [expanded, setExpanded] = useState(rank === 1);
+  const PREVIEW_CHARS = 280;
+  const rawText = chunk.content ?? '';
+  const isLong  = rawText.length > PREVIEW_CHARS;
+  const preview = isLong && !expanded ? rawText.slice(0, PREVIEW_CHARS) + '…' : rawText;
+  const highlighted = phrases.length ? applyHighlights(preview, phrases) : null;
+  const relevancePct = chunk.similarity != null ? Math.round((chunk.similarity as number) * 100) : null;
+
+  return (
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden shadow-sm">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/80">
+        {rank != null && (
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${rank === 1 ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+            #{rank}
+          </span>
+        )}
+        {chunk.section && (
+          <span className="text-xs font-semibold text-gray-700 dark:text-gray-200 truncate flex-1">
+            {chunk.section}
+          </span>
+        )}
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          {chunk.page_range && (
+            <span className="text-[10px] text-gray-400">p.{chunk.page_range}</span>
+          )}
+          {relevancePct != null && (
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+              relevancePct >= 70 ? 'bg-green-50 text-green-700' :
+              relevancePct >= 50 ? 'bg-yellow-50 text-yellow-700' :
+              'bg-gray-100 text-gray-500'
+            }`}>
+              {relevancePct}% match
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="px-4 py-3">
+        {highlighted ? (
+          <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed"
+             dangerouslySetInnerHTML={{ __html: highlighted }} />
+        ) : (
+          <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed whitespace-pre-wrap">{preview}</p>
+        )}
+        {isLong && (
+          <button onClick={() => setExpanded((v) => !v)}
+            className="mt-2 text-xs text-blue-500 hover:text-blue-700 transition-colors">
+            {expanded ? '▲ Show less' : '▼ Show more'}
+          </button>
+        )}
+      </div>
+      {Array.isArray(chunk.keywords) && (chunk.keywords as string[]).length > 0 && (
+        <div className="px-4 pb-3 flex flex-wrap gap-1">
+          {(chunk.keywords as string[]).slice(0, 6).map((kw) => (
+            <span key={kw} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
+              {kw}
+            </span>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ── Unknown file type ─────────────────────────────────────────────────────────
-function UnknownRenderer({ fileUrl }: { fileUrl: string }) {
+// ── UnknownViewer ─────────────────────────────────────────────────────────────
+
+function UnknownViewer({ fileUrl }: { fileUrl: string }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center p-8">
       <span className="text-3xl">📎</span>
@@ -343,7 +427,8 @@ function UnknownRenderer({ fileUrl }: { fileUrl: string }) {
   );
 }
 
-// ── Shared UI atoms ───────────────────────────────────────────────────────────
+// ── Shared atoms ──────────────────────────────────────────────────────────────
+
 function Spinner() {
   return (
     <div className="flex items-center justify-center py-16">
@@ -362,7 +447,15 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function NavButton({ onClick, disabled, dir }: { onClick: () => void; disabled: boolean; dir: 'prev' | 'next' }) {
+function NavButton({
+  onClick,
+  disabled,
+  dir,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  dir: 'prev' | 'next';
+}) {
   return (
     <button
       onClick={onClick}
@@ -371,13 +464,13 @@ function NavButton({ onClick, disabled, dir }: { onClick: () => void; disabled: 
     >
       {dir === 'prev' && (
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
         </svg>
       )}
       {dir === 'prev' ? 'Prev' : 'Next'}
       {dir === 'next' && (
         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
         </svg>
       )}
     </button>
@@ -385,16 +478,12 @@ function NavButton({ onClick, disabled, dir }: { onClick: () => void; disabled: 
 }
 
 function FileIcon({ type }: { type: FileType }) {
-  const icons: Record<FileType, string> = {
-    pdf: '🔴', docx: '🔵', json: '🟡', unknown: '📎',
-  };
+  const icons: Record<FileType, string> = { pdf: '🔴', docx: '🔵', json: '🟡', unknown: '📎' };
   return <span className="text-base flex-shrink-0">{icons[type]}</span>;
 }
 
 function TypeBadge({ type }: { type: FileType }) {
-  const labels: Record<FileType, string> = {
-    pdf: 'PDF', docx: 'DOCX', json: 'JSON', unknown: 'File',
-  };
+  const labels: Record<FileType, string> = { pdf: 'PDF', docx: 'DOCX', json: 'JSON', unknown: 'File' };
   const colors: Record<FileType, string> = {
     pdf:     'bg-red-50 text-red-600 border-red-200',
     docx:    'bg-blue-50 text-blue-600 border-blue-200',
