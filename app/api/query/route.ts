@@ -75,21 +75,24 @@ export async function POST(req: NextRequest) {
         // 2. Search for similar chunks
         const supabase = createServerClient();
 
-        // Debug: Log embedding details
-        console.log('[query] Embedding type:', typeof queryEmbedding, 'isArray:', Array.isArray(queryEmbedding));
+        console.log('[query] Calling match_chunks');
         console.log('[query] Embedding length:', queryEmbedding.length);
         console.log('[query] First 3 values:', queryEmbedding.slice(0, 3));
 
-        // Send embedding as JSON array (PostgREST converts to jsonb)
+        // Send as array - PostgREST handles conversion to vector automatically
         const { data: rpcData, error: rpcError } = await supabase.rpc('match_chunks', {
-          query_embedding: queryEmbedding,
+          query_embedding: queryEmbedding,  // Send as array, not string
           match_count: top_k,
           filter_doc_type: doc_type_filter ?? null,
         });
 
-        console.log('[query] chunks:', rpcData?.length ?? 0, 'err:', rpcError?.message ?? 'none');
-        if (rpcError) console.error('[query] RPC error details:', rpcError);
-        if (rpcData?.length) console.log('[query] sims:', (rpcData as MatchedChunk[]).slice(0,3).map((c:MatchedChunk) => c.similarity?.toFixed(3)));
+        console.log('[query] Result:', rpcData?.length ?? 0, 'chunks');
+        if (rpcError) {
+          console.error('[query] RPC error:', rpcError);
+        }
+        if (rpcData?.length) {
+          console.log('[query] Top similarities:', rpcData.slice(0, 3).map((c: any) => c.similarity?.toFixed(3)));
+        }
 
         const chunks = rpcData as MatchedChunk[] | null;
         const error = rpcError;

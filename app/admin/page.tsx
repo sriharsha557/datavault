@@ -131,7 +131,18 @@ export default function AdminPage() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M19 12H5M12 5l-7 7 7 7"/>
             </svg>
-            Main page
+            Chat
+          </a>
+          <a
+            href="/modeler"
+            className="text-xs text-dv-muted hover:text-dv-accent transition-colors px-2 py-1 border border-dv-border rounded flex items-center gap-1"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+              <line x1="12" y1="22.08" x2="12" y2="12"/>
+            </svg>
+            DV Model Generator
           </a>
           <span className="text-xs text-dv-muted">{readyDocs.length} document{readyDocs.length !== 1 ? 's' : ''} indexed</span>
           <button

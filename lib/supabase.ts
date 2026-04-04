@@ -1,10 +1,24 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
+// DO NOT use singleton in development - always create fresh client
+// This ensures schema changes are picked up immediately
 export function createServerClient() {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
-  return createClient(url, key, { auth: { persistSession: false } });
+  
+  // Always create a fresh client to avoid caching stale schema
+  return createClient(url, key, { 
+    auth: { persistSession: false },
+    db: { 
+      schema: 'public'
+    },
+    global: {
+      headers: {
+        'x-client-info': 'datavault-assistant'
+      }
+    }
+  });
 }
 
 export function createBrowserClient() {
